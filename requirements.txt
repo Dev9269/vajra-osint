@@ -1,0 +1,20 @@
+# VAJRA Layer 3 — OSINT Aggregator
+# Python 3.11+
+
+# Scraping & parsing
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+feedparser>=6.0.0
+
+# NER (Agent B)
+spacy>=3.7.0
+
+# Fuzzy matching (Agent B)
+rapidfuzz>=3.5.0
+
+# Scheduler (Agent B)
+apscheduler>=3.10.0
+
+# API (Agent B)
+fastapi>=0.104.0
+uvicorn>=0.24.0
