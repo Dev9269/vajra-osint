@@ -13,6 +13,7 @@ They must be cross-referenced against official government records.
 """
 
 import logging
+import re
 import time
 from typing import Optional
 
@@ -25,17 +26,40 @@ logger = logging.getLogger(__name__)
 
 WIKI_API = "https://en.wikipedia.org/w/api.php"
 USER_AGENT = "VAJRA-OSINT/1.0 (SIH 2026 hackathon project; educational use)"
-REQUEST_DELAY = 2
+REQUEST_DELAY = 4
+_MAX_RETRIES = 3
 
 # Verified to have content (Sep 2026)
 DEFAULT_CATEGORIES = [
     "Category:Fugitives_wanted_by_India",
     "Category:People_convicted_of_murder_by_India",
     "Category:Indian_people_convicted_of_murder",
+    "Category:People_charged_with_murder",
+    "Category:Indian_people_convicted_of_rape",
+    "Category:Drug_traffickers",
 ]
 
 _session = requests.Session()
 _session.headers.update({"User-Agent": USER_AGENT})
+
+
+def _api_get(params: dict, timeout: int = 30) -> Optional[requests.Response]:
+    """GET the Wikipedia API with automatic retry + 30 s cooldown on 429."""
+    for attempt in range(_MAX_RETRIES):
+        try:
+            resp = _session.get(WIKI_API, params=params, timeout=timeout)
+            if resp.status_code == 429:
+                retry_after = 30 * (attempt + 1)
+                logger.warning("429 rate-limited, sleeping %ds (attempt %d/%d)...",
+                               retry_after, attempt + 1, _MAX_RETRIES)
+                time.sleep(retry_after)
+                continue
+            resp.raise_for_status()
+            return resp
+        except requests.RequestException as e:
+            logger.error("API request failed (attempt %d/%d): %s", attempt + 1, _MAX_RETRIES, e)
+            time.sleep(10)
+    return None
 
 
 def _get_category_members(category: str, limit: int = 50) -> list[str]:
@@ -49,8 +73,9 @@ def _get_category_members(category: str, limit: int = 50) -> list[str]:
         "format": "json",
     }
     try:
-        resp = _session.get(WIKI_API, params=params, timeout=30)
-        resp.raise_for_status()
+        resp = _api_get(params)
+        if not resp:
+            return titles
         data = resp.json()
         for member in data.get("query", {}).get("categorymembers", []):
             titles.append(member["title"])
@@ -59,26 +84,32 @@ def _get_category_members(category: str, limit: int = 50) -> list[str]:
     return titles
 
 
-def _get_page_extract(title: str) -> Optional[str]:
+def _get_page_extract_and_image(title: str) -> tuple[Optional[str], Optional[str]]:
     params = {
         "action": "query",
         "titles": title,
-        "prop": "extracts",
+        "prop": "extracts|pageimages",
         "exintro": "true",
         "explaintext": "true",
+        "piprop": "original|thumbnail",
+        "pithumbsize": 480,
         "format": "json",
     }
     try:
-        resp = _session.get(WIKI_API, params=params, timeout=30)
-        resp.raise_for_status()
+        resp = _api_get(params)
+        if not resp:
+            return None, None
         data = resp.json()
         for page in data.get("query", {}).get("pages", {}).values():
             extract = page.get("extract", "")
-            if extract:
-                return extract
+            image = (page.get("original") or {}).get("source") or \
+                    (page.get("thumbnail") or {}).get("source")
+            if image:
+                image = re.sub(r"\?utm_.*$", "", image)
+            return (extract or None), (image or None)
     except requests.RequestException as e:
         logger.error("Failed to fetch extract for %s: %s", title, e)
-    return None
+    return None, None
 
 
 def sync_wikipedia(
@@ -102,7 +133,7 @@ def sync_wikipedia(
 
         for title in titles:
             time.sleep(REQUEST_DELAY)
-            extract = _get_page_extract(title)
+            extract, image_url = _get_page_extract_and_image(title)
             if not extract:
                 logger.warning("No extract for %s, skipping", title)
                 continue
@@ -130,6 +161,7 @@ def sync_wikipedia(
                     plate_number=person.plate_number,
                     phone_number=person.phone_number,
                     detail=extract[:2000],
+                    image_url=image_url,
                     source_type="wikipedia",
                     source_url=source_url,
                 )
@@ -141,6 +173,7 @@ def sync_wikipedia(
                     entity_name=title,
                     record_type="unresolved_lead",
                     detail=extract[:2000],
+                    image_url=image_url,
                     source_type="wikipedia",
                     source_url=source_url,
                 )

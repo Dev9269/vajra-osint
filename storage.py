@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS records (
     plate_number TEXT,
     phone_number TEXT,
     detail TEXT,
+    image_url TEXT,
     dedup_key TEXT NOT NULL UNIQUE,
     source_type TEXT NOT NULL,
     source_url TEXT NOT NULL,
@@ -111,6 +112,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 plate_number TEXT,
                 phone_number TEXT,
                 detail TEXT,
+                image_url TEXT,
                 dedup_key TEXT NOT NULL UNIQUE,
                 source_type TEXT NOT NULL,
                 source_url TEXT NOT NULL,
@@ -122,12 +124,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 """INSERT INTO records
                    (entity_name, record_type, age, gender, crime_type, crime_description,
                     status, location, fir_number, plate_number, phone_number, detail,
-                    dedup_key, source_type, source_url, fetched_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    image_url, dedup_key, source_type, source_url, fetched_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (d.get("entity_name"), d.get("record_type") or "person", d.get("age"),
                  d.get("gender"), d.get("crime_type"), d.get("crime_description"),
                  d.get("status"), d.get("location"), d.get("fir_number"), d.get("plate_number"),
-                 d.get("phone_number"), d.get("detail"),
+                 d.get("phone_number"), d.get("detail"), d.get("image_url"),
                  dedup_key_for(d.get("entity_name"), d.get("source_url") or "", d.get("fir_number")),
                  d.get("source_type"), d.get("source_url"), d.get("fetched_at")),
             )
@@ -145,6 +147,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.commit()
     if links_exists and "description" not in ecols:
         conn.execute("ALTER TABLE entity_links ADD COLUMN description TEXT")
+        conn.commit()
+
+    if records_exists and "image_url" not in rcols:
+        conn.execute("ALTER TABLE records ADD COLUMN image_url TEXT")
         conn.commit()
 
 
@@ -174,6 +180,7 @@ def insert_record(
     plate_number: Optional[str] = None,
     phone_number: Optional[str] = None,
     detail: Optional[str] = None,
+    image_url: Optional[str] = None,
     source_type: str,
     source_url: str,
     fetched_at: Optional[str] = None,
@@ -187,11 +194,11 @@ def insert_record(
             """INSERT INTO records
                (entity_name, record_type, age, gender, crime_type, crime_description,
                 status, location, fir_number, plate_number, phone_number, detail,
-                dedup_key, source_type, source_url, fetched_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                image_url, dedup_key, source_type, source_url, fetched_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (entity_name, record_type, age, gender, crime_type, crime_description,
              status, location, fir_number, plate_number, phone_number, detail,
-             dedup_key, source_type, source_url, fetched_at),
+             image_url, dedup_key, source_type, source_url, fetched_at),
         )
         conn.commit()
         return True
@@ -247,7 +254,7 @@ def get_entity_records(conn: sqlite3.Connection, entity_name: str) -> list[dict]
     rows = conn.execute(
         """SELECT id, entity_name, record_type, age, gender, crime_type,
                   crime_description, status, location, fir_number, plate_number,
-                  phone_number, detail, source_type, source_url, fetched_at
+                  phone_number, detail, image_url, source_type, source_url, fetched_at
            FROM records
            WHERE entity_name = ?
            ORDER BY fetched_at DESC""",
@@ -289,7 +296,7 @@ def get_distinct_entity_names(conn: sqlite3.Connection) -> list[str]:
 
 def search_by_status(conn: sqlite3.Connection, status: str) -> list[dict]:
     rows = conn.execute(
-        """SELECT entity_name, crime_type, status, location, source_url
+        """SELECT entity_name, crime_type, status, location, source_url, image_url
            FROM records WHERE status = ? ORDER BY entity_name""",
         (status,),
     ).fetchall()
@@ -298,7 +305,7 @@ def search_by_status(conn: sqlite3.Connection, status: str) -> list[dict]:
 
 def search_by_crime(conn: sqlite3.Connection, crime_type: str) -> list[dict]:
     rows = conn.execute(
-        """SELECT entity_name, crime_type, status, location, source_url
+        """SELECT entity_name, crime_type, status, location, source_url, image_url
            FROM records WHERE crime_type LIKE ? ORDER BY entity_name""",
         (f"%{crime_type}%",),
     ).fetchall()

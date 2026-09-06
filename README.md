@@ -21,9 +21,16 @@ Each stored record has structured fields when the source text provides them (mis
 | `fir_number` | FIR / case reference | `FIR 123/2026` |
 | `plate_number` | Vehicle registration | `DL 01 AB 1234` |
 | `phone_number` | Contact number | `+919876543210` |
+| `image_url` | Photo/image URL straight from the source (Wikipedia page photo, RSS thumbnail) — **never downloaded or stored locally**, only the link | `https://upload.wikimedia.org/.../Dawood_ibrahim.png` |
 | `source_type` | wikipedia / news / gov_portal | `wikipedia` |
 | `source_url` | Exact citation URL | https://en.wikipedia.org/wiki/... |
 | `fetched_at` | Fetch timestamp | ISO date |
+
+**Photos** (`image_url`): the connector stores the image link from the original
+source, not the image itself — Wikipedia uses the official `prop=pageimages`
+(endpoint: `extracts|pageimages`, `piprop=original|thumbnail`) and news uses
+RSS `media:content` / `media:thumbnail` / image enclosures. Missing photos are
+left `null`.
 
 **Deduplication** (`#8`): each record gets a non-null `dedup_key` = SHA-256 of
 `entity_name | source_url | COALESCE(fir_number, '')`, with a `UNIQUE` index on
@@ -161,7 +168,7 @@ python api.py                          # then query /entities, /search?q=...
 - **Sources**: only official public records — gov wanted-persons portals, court portals, NCRB open data, press releases, syndicated RSS feeds. No social media, no login/bypass.
 - **No fabrication**: never infers DOB/address/etc. not in the source. Missing fields stay `null`. Person names only stored when NER finds an explicit name. No crime attribution to anyone who merely *reports* or speaks about a crime.
 - **Citation required**: every record has `source_url`, `source_type`, `fetched_at`.
-- **Scraping etiquette**: robots.txt check, 2s rate limiting, descriptive User-Agent.
+- **Scraping etiquette**: robots.txt check, 4s rate limiting with automatic retry/backoff on 429 (Wikipedia), descriptive User-Agent.
 - **Copyright**: headlines/short summaries only, always link to original.
 - **Entity resolution**: subset/ambiguous matches stored as `needs_review`, never auto-merged (max one-way auto-merge for near-identical names only).
 - **Access control**: API is key-protected; not suitable for public exposure without further rate limiting + HTTPS.

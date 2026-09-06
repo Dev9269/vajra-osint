@@ -67,6 +67,23 @@ def _clean_html(html_text: str) -> str:
     return clean[:500]
 
 
+def _entry_image(entry) -> Optional[str]:
+    """Pull the first image URL from an RSS entry (media content/thumbnail or enclosure)."""
+    for key in ("media_content", "media_thumbnail", "media_thumbnails"):
+        items = getattr(entry, key, None)
+        if items:
+            for item in items:
+                url = (item.get("url") if isinstance(item, dict) else None)
+                if url:
+                    return url
+    for enc in getattr(entry, "enclosures", None) or []:
+        if isinstance(enc, dict) and (enc.get("type") or "").startswith("image/"):
+            url = enc.get("href") or enc.get("url")
+            if url:
+                return url
+    return None
+
+
 def sync_news(
     feeds: Optional[list[str]] = None,
     keywords: Optional[list[str]] = None,
@@ -102,6 +119,7 @@ def sync_news(
             summary_raw = entry.get("summary", "") or entry.get("description", "")
             summary = _clean_html(summary_raw)
             link = entry.get("link", "")
+            image_url = _entry_image(entry)
             combined_text = f"{title} {summary}"
 
             if not _matches_keywords(combined_text, keywords):
@@ -132,6 +150,7 @@ def sync_news(
                         plate_number=person.plate_number,
                         phone_number=person.phone_number,
                         detail=detail[:500],
+                        image_url=image_url,
                         source_type="news",
                         source_url=link,
                     )
@@ -146,6 +165,7 @@ def sync_news(
                     entity_name=title[:200],
                     record_type="unresolved_lead",
                     detail=detail[:500],
+                    image_url=image_url,
                     source_type="news",
                     source_url=link,
                 )
