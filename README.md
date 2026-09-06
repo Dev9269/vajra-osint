@@ -73,6 +73,22 @@ name truncation (e.g. `en_core_web_sm` labeled "Rakesh Kumar Verma" as
 
 ## Running
 
+### Live public dashboard (zero hosting needed)
+
+The repo includes an auto-updating, free GitHub-hosted dashboard:
+
+- **URL:** https://dev9269.github.io/vajra-osint/
+- **Cadence:** a GitHub Action scrapes news + Wikipedia every 4 hours, reseeds
+  from the previous committed snapshot, dedupes, and redeploys the Pages site.
+  Fully free — the repo is public, so Actions minutes are unlimited.
+- **Privacy:** the public export (`scripts/sync_cloud.py` → `data/records.json`)
+  is phone-number-stripped. The runner uses the lightweight `en_core_web_sm`
+  spaCy model; run the connectors locally with `en_core_web_trf` for max
+  accuracy.
+- **Manual refresh:** Github → Actions → "VAJRA Auto-Update" → "Run workflow".
+- Deployment: `.github/workflows/vajra-sync.yml` (data update) +
+  `vajra-pages.yml` (Pages deploy).
+
 ### Individual connectors (self-tests)
 
 ```bash
