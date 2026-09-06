@@ -1,0 +1,18 @@
+# SQLite database
+vajra.db
+vajra.db-wal
+vajra.db-shm
+
+# Logs
+vajra_scheduler.log
+
+# Python
+__pycache__/
+*.py[cod]
+.env
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db

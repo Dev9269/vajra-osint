@@ -4,10 +4,13 @@ SIH 2026 hackathon project. Aggregates publicly available information about want
 
 ## Agent Split
 
-| Agent | Lane | Files |
-|-------|------|-------|
-| **Agent A (OpenCode)** | Ingestion | `storage.py`, `wikipedia_connector.py`, `news_connector.py`, `gov_portal_connector.py` |
-| **Agent B (Claude Code)** | Intelligence / Serving | `entity_extraction.py`, `entity_resolution.py`, `scheduler.py`, `api.py` |
+Both lanes were originally planned as a two-agent build (OpenCode = Agent A, Claude Code = Agent B).
+Claude Code was stopped mid-session, so Agent A (OpenCode / this repository) completed both lanes.
+
+| Lane | Build note | Files |
+|------|-----------|-------|
+| **Ingestion (Agent A)** | Built first | `storage.py`, `wikipedia_connector.py`, `news_connector.py`, `gov_portal_connector.py` |
+| **Intelligence / Serving (Agent B)** | Built by Agent A after Agent B was stopped | `entity_extraction.py`, `entity_resolution.py`, `scheduler.py`, `api.py` |
 
 ## Setup
 

@@ -1,6 +1,12 @@
 # VAJRA Layer 3 — Agent Split
 
-## Agent A (OpenCode) — Ingestion Lane ✅ CLAIMED
+## Status Update
+
+Claude Code (Agent B) was stopped mid-session and did not build its lane.
+Agent A (OpenCode) took over and completed BOTH lanes — see the
+`agent-b/intelligence` branch, which contains everything below.
+
+## Agent A (OpenCode) — Ingestion Lane ✅ CLAIMED + COMPLETED
 
 | File | Purpose |
 |------|---------|
@@ -9,7 +15,7 @@
 | `news_connector.py` | RSS feed polling via feedparser — keyword-filtered headline + summary storage |
 | `gov_portal_connector.py` | Template-based government portal scraper — robots.txt + rate limiting |
 
-## Agent B (Claude Code) — Intelligence / Serving Lane
+## Agent B (Claude Code) — Intelligence / Serving Lane (TAKEN OVER BY AGENT A)
 
 | File | Purpose |
 |------|---------|

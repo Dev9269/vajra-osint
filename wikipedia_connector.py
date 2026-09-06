@@ -22,13 +22,12 @@ WIKI_API = "https://en.wikipedia.org/w/api.php"
 USER_AGENT = "VAJRA-OSINT/1.0 (SIH 2026 hackathon project; educational use)"
 REQUEST_DELAY = 2  # seconds between API calls — Wikipedia allows faster but we're polite
 
-# Categories to pull from — Indian fugitives, wanted persons, convicted criminals
+# Categories to pull from — verified to have content on English Wikipedia (Sep 2026).
+# 'ifugitives' was removed from this list because it has no direct members.
 DEFAULT_CATEGORIES = [
-    "Category:Indian_fugitives",
-    "Category:Indian_wanted_persons",
-    "Category:Indian_convicted_criminals",
+    "Category:Fugitives_wanted_by_India",
     "Category:People_convicted_of_murder_by_India",
-    "Category:People_convicted_of_fraud_by_India",
+    "Category:Indian_people_convicted_of_murder",
 ]
 
 # Rate-limit: don't hammer the API
@@ -147,8 +146,8 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     print("Running Wikipedia connector test (single category, 3 pages max)...")
     count = sync_wikipedia(
-        categories=["Category:Indian_fugitives"],
+        categories=["Category:Fugitives_wanted_by_India"],
         max_pages_per_category=3,
     )
     print(f"Inserted {count} new records.")
-    print("Verify against: https://en.wikipedia.org/wiki/Category:Indian_fugitives")
+    print("Verify against: https://en.wikipedia.org/wiki/Category:Fugitives_wanted_by_India")
