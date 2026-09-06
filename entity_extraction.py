@@ -1,8 +1,10 @@
 """Entity extraction pipeline for VAJRA OSINT aggregator.
 
-spaCy NER for PERSON and LOCATION entities, plus regex for structured
-identifiers (phone numbers, vehicle plates, FIR/case reference numbers).
+CHANGELOG 2026-09-06: rebuilt to extract full structured fields:
+  age, gender, crime_type, crime_description, status, location,
+  fir_number, plate_number, phone_number, plus person names.
 
+spaCy NER for PERSON/LOCATION, regex for everything else.
 Regex matches take priority over NER for overlapping text spans.
 """
 
@@ -16,69 +18,143 @@ import spacy
 logger = logging.getLogger(__name__)
 
 # ── Gazetteer ───────────────────────────────────────────────────────────────
-# Known locations that NER might misclassify as person names or miss entirely.
-# Add Indian cities, states, and common location abbreviations.
 
 LOCATIONS_GAZETTEER = {
-    # States
     "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
     "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
     "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
     "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
     "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
-    # UTs
     "Delhi", "Chandigarh", "Puducherry", "Jammu and Kashmir", "Ladakh",
-    "Andaman and Nicobar Islands", "Dadra and Nagar Haveli", "Lakshadweep",
-    # Major cities
-    "Mumbai", "Delhi", "Bangalore", "Hyderabad", "Ahmedabad", "Chennai",
+    "Mumbai", "Delhi", "New Delhi", "Bangalore", "Hyderabad", "Ahmedabad", "Chennai",
     "Kolkata", "Pune", "Jaipur", "Lucknow", "Kanpur", "Nagpur", "Indore",
     "Thane", "Bhopal", "Visakhapatnam", "Patna", "Vadodara", "Ghaziabad",
     "Ludhiana", "Agra", "Nashik", "Faridabad", "Meerut", "Rajkot",
-    # State abbreviations used in records
     "UP", "MP", "TN", "WB", "GJ", "MH", "KA", "RJ", "AP", "TS", "KL", "PB",
+    "NCR", "NCR",
 }
 
-# ── Regex Patterns ──────────────────────────────────────────────────────────
+# ── Crime type keywords ─────────────────────────────────────────────────────
 
-# Indian phone numbers: 10 digits, optional +91 prefix
-PHONE_PATTERN = re.compile(
-    r"(?:\+91[\s-]?)?[6-9]\d{9}"
-)
+CRIME_TYPES = {
+    "murder": "murder",
+    "homicide": "murder",
+    "killing": "murder",
+    "killed": "murder",
+    "kill": "murder",
+    "assassination": "murder",
+    "cyber fraud": "cyber fraud",
+    "cybercrime": "cyber fraud",
+    "online fraud": "cyber fraud",
+    "phishing": "cyber fraud",
+    "banking fraud": "cyber fraud",
+    "fraud": "fraud",
+    "cheating": "fraud",
+    "embezzlement": "fraud",
+    "scam": "fraud",
+    "smuggling": "smuggling",
+    "narcotics": "narcotics",
+    "drug": "narcotics",
+    "drug trafficking": "narcotics",
+    "heroin": "narcotics",
+    "cocaine": "narcotics",
+    "cannabis": "narcotics",
+    "contraband": "narcotics",
+    "robbery": "robbery",
+    "dacoity": "robbery",
+    "theft": "theft",
+    "burglary": "theft",
+    "kidnapping": "kidnapping",
+    "abduction": "kidnapping",
+    "extortion": "extortion",
+    "blackmail": "extortion",
+    "terror": "terrorism",
+    "terrorism": "terrorism",
+    "terrorist": "terrorism",
+    "naxal": "naxalism",
+    "naxalite": "naxalism",
+    "maoist": "naxalism",
+    "money laundering": "money laundering",
+    "pmla": "money laundering",
+    "corruption": "corruption",
+    "bribery": "corruption",
+    "rape": "sexual assault",
+    "sexual assault": "sexual assault",
+    "murder for hire": "murder",
+    "serial murder": "murder",
+    "culpable homicide": "murder",
+    "attempt to murder": "attempted murder",
+    "culpable homicide not amounting to murder": "culpable homicide",
+}
 
-# Vehicle registration plates: AA 12 AA 1234 format (Indian RTO)
-PLATE_PATTERN = re.compile(
-    r"\b[A-Z]{2}[\s-]?\d{1,2}[\s-]?[A-Z]{1,2}[\s-]?\d{1,4}\b"
-)
+# ── Status keywords ─────────────────────────────────────────────────────────
 
-# FIR / Case reference numbers
-FIR_PATTERN = re.compile(
-    r"\bFIR\s*(?:No\.?\s*)?(\d{1,6}/\d{4})",
-    re.IGNORECASE,
-)
+STATUS_KEYWORDS = {
+    "wanted": "wanted",
+    "fugitive": "wanted",
+    "absconding": "absconding",
+    "on the run": "absconding",
+    "evading": "absconding",
+    "convicted": "convicted",
+    "found guilty": "convicted",
+    "sentenced": "convicted",
+    "sentence": "convicted",
+    "acquitted": "acquitted",
+    "found not guilty": "acquitted",
+    "arrested": "arrested",
+    "taken into custody": "arrested",
+    "in custody": "arrested",
+    "surrendered": "surrendered",
+    "surrender": "surrendered",
+    "bail": "on bail",
+    "released on bail": "on bail",
+    "interpol": "interpol red notice",
+    "red notice": "interpol red notice",
+    "chargesheet": "chargesheet filed",
+    "chargesheeted": "chargesheet filed",
+    "encounter": "encounter killed",
+    "killed in encounter": "encounter killed",
+}
 
-CASE_PATTERN = re.compile(
-    r"\b(?:Case|CC|SC)\s*(?:No\.?\s*)?(\d{1,6}/\d{4})",
-    re.IGNORECASE,
-)
+# ── Regex patterns ──────────────────────────────────────────────────────────
 
-# ── Data Classes ────────────────────────────────────────────────────────────
+PHONE_PATTERN = re.compile(r"(?:\+91[\s-]?)?[6-9]\d{9}")
+PLATE_PATTERN = re.compile(r"\b[A-Z]{2}[\s-]?\d{1,2}[\s-]?[A-Z]{1,2}[\s-]?\d{1,4}\b")
+FIR_PATTERN = re.compile(r"\bFIR\s*(?:No\.?\s*)?(\d{1,6}/\d{4})", re.IGNORECASE)
+CASE_PATTERN = re.compile(r"\b(?:Case|CC|SC)\s*(?:No\.?\s*)?(\d{1,6}/\d{4})", re.IGNORECASE)
+
+# Age patterns
+AGE_EXACT = re.compile(r"\b(?:aged?|age|years?\s*old)\s*[:=]?\s*(\d{1,3})\b", re.IGNORECASE)
+AGE_YEAR_OLD = re.compile(r"(\d{1,3})[\s-]*(?:year[\s-]*old|yr[\s-]*old|y/?o)\b", re.IGNORECASE)
+AGE_NUMBER_ONLY = re.compile(r"\baged\s+(\d{1,3})\b", re.IGNORECASE)
+
+# DOB patterns
+DOB_DMY = re.compile(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b")
+DOB_MDN = re.compile(r"\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+(\d{4})\b", re.IGNORECASE)
+DOB_YEAR_ONLY = re.compile(r"\bborn\s+(?:in\s+)?(\d{4})\b", re.IGNORECASE)
+
+# Gender patterns
+GENDER_MALE = re.compile(r"\b(?:he|his|him|man|male|boy|gentleman|s/o|son\s+of|father|husband|brother)\b", re.IGNORECASE)
+GENDER_FEMALE = re.compile(r"\b(?:she|her|woman|female|girl|lady|d/o|daughter\s+of|mother|wife|sister)\b", re.IGNORECASE)
+
+
+# ── Data classes ────────────────────────────────────────────────────────────
 
 @dataclass
-class ExtractedEntity:
-    text: str
-    label: str  # PERSON, LOCATION, PHONE, PLATE, FIR, CASE
-    start: int
-    end: int
-    source: str = "ner"  # "ner" or "regex"
-
-
-@dataclass
-class ExtractionResult:
-    persons: list[ExtractedEntity] = field(default_factory=list)
-    locations: list[ExtractedEntity] = field(default_factory=list)
-    phones: list[ExtractedEntity] = field(default_factory=list)
-    plates: list[ExtractedEntity] = field(default_factory=list)
-    case_refs: list[ExtractedEntity] = field(default_factory=list)
+class ExtractedPerson:
+    name: str
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    crime_type: Optional[str] = None
+    crime_description: Optional[str] = None
+    status: Optional[str] = None
+    location: Optional[str] = None
+    fir_number: Optional[str] = None
+    plate_number: Optional[str] = None
+    phone_number: Optional[str] = None
+    start: int = 0
+    end: int = 0
+    source: str = "ner"
 
 
 # ── NLP Pipeline ────────────────────────────────────────────────────────────
@@ -87,7 +163,6 @@ _nlp = None
 
 
 def _get_nlp():
-    """Load spaCy model — tries en_core_web_trf first, falls back to sm."""
     global _nlp
     if _nlp is not None:
         return _nlp
@@ -99,165 +174,203 @@ def _get_nlp():
         try:
             _nlp = spacy.load("en_core_web_sm")
         except OSError:
-            logger.error("No spaCy model available. Run: python -m spacy download en_core_web_sm")
+            logger.error("No spaCy model. Run: python -m spacy download en_core_web_sm")
             raise
     return _nlp
 
 
-# ── Extraction Functions ────────────────────────────────────────────────────
+# ── Extraction functions ────────────────────────────────────────────────────
 
-def _extract_regex(text: str) -> list[ExtractedEntity]:
-    """Extract structured identifiers via regex (takes priority over NER)."""
-    entities = []
+def _extract_age(text: str) -> Optional[int]:
+    """Extract age from text using multiple patterns."""
+    m = AGE_EXACT.search(text)
+    if m:
+        age = int(m.group(1))
+        if 10 <= age <= 100:
+            return age
 
-    for match in PHONE_PATTERN.finditer(text):
-        entities.append(ExtractedEntity(
-            text=match.group().strip(),
-            label="PHONE",
-            start=match.start(),
-            end=match.end(),
-            source="regex",
-        ))
+    m = AGE_YEAR_OLD.search(text)
+    if m:
+        age = int(m.group(1))
+        if 10 <= age <= 100:
+            return age
 
-    for match in PLATE_PATTERN.finditer(text):
-        entities.append(ExtractedEntity(
-            text=match.group().strip(),
-            label="PLATE",
-            start=match.start(),
-            end=match.end(),
-            source="regex",
-        ))
+    m = AGE_NUMBER_ONLY.search(text)
+    if m:
+        age = int(m.group(1))
+        if 10 <= age <= 100:
+            return age
 
-    for match in FIR_PATTERN.finditer(text):
-        entities.append(ExtractedEntity(
-            text=f"FIR {match.group(1)}",
-            label="FIR",
-            start=match.start(),
-            end=match.end(),
-            source="regex",
-        ))
+    # Try DOB → calculate age
+    m = DOB_DMY.search(text)
+    if m:
+        from datetime import datetime
+        try:
+            dob = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+            age = (datetime.now() - dob).days // 365
+            if 10 <= age <= 100:
+                return age
+        except ValueError:
+            pass
 
-    for match in CASE_PATTERN.finditer(text):
-        entities.append(ExtractedEntity(
-            text=f"Case {match.group(1)}",
-            label="CASE",
-            start=match.start(),
-            end=match.end(),
-            source="regex",
-        ))
+    m = DOB_YEAR_ONLY.search(text)
+    if m:
+        from datetime import datetime
+        try:
+            age = datetime.now().year - int(m.group(1))
+            if 10 <= age <= 100:
+                return age
+        except ValueError:
+            pass
 
-    return entities
+    return None
 
 
-def _extract_ner(text: str) -> list[ExtractedEntity]:
-    """Extract PERSON and LOCATION entities via spaCy NER."""
+def _extract_gender(text: str) -> Optional[str]:
+    """Detect gender from pronouns/context."""
+    male_score = len(GENDER_MALE.findall(text))
+    female_score = len(GENDER_FEMALE.findall(text))
+    if female_score > male_score:
+        return "female"
+    if male_score > female_score:
+        return "male"
+    return None
+
+
+def _extract_crime_type(text: str) -> Optional[str]:
+    """Match crime keywords against text, return most specific match."""
+    text_lower = text.lower()
+    matched = []
+    for keyword, crime_type in CRIME_TYPES.items():
+        if keyword in text_lower:
+            matched.append((len(keyword), crime_type))
+    if matched:
+        matched.sort(key=lambda x: -x[0])
+        return matched[0][1]
+    return None
+
+
+def _extract_status(text: str) -> Optional[str]:
+    """Detect status from keywords. Returns most specific status."""
+    text_lower = text.lower()
+    matched = []
+    for keyword, status in STATUS_KEYWORDS.items():
+        if keyword in text_lower:
+            matched.append((len(keyword), status))
+    if matched:
+        matched.sort(key=lambda x: -x[0])
+        return matched[0][1]
+    return None
+
+
+def _extract_fir(text: str) -> Optional[str]:
+    """Extract FIR reference number."""
+    m = FIR_PATTERN.search(text)
+    if m:
+        return f"FIR {m.group(1)}"
+    m = CASE_PATTERN.search(text)
+    if m:
+        return f"Case {m.group(1)}"
+    return None
+
+
+def _extract_phone(text: str) -> Optional[str]:
+    """Extract Indian phone number."""
+    m = PHONE_PATTERN.search(text)
+    if m:
+        return m.group().strip()
+    return None
+
+
+def _extract_plate(text: str) -> Optional[str]:
+    """Extract vehicle registration plate."""
+    m = PLATE_PATTERN.search(text)
+    if m:
+        return m.group().strip()
+    return None
+
+
+def _extract_location(text: str) -> Optional[str]:
+    """Extract primary location using gazetteer (word-boundary match).
+
+    Prefers the LONGEST matching location so "New Delhi" wins over "Delhi".
+    """
+    matches = []
+    for loc in LOCATIONS_GAZETTEER:
+        pattern = re.compile(rf"\b{re.escape(loc)}\b")
+        if pattern.search(text):
+            matches.append(loc)
+
+    if not matches:
+        return None
+    # Highest specificity = longest name
+    matches.sort(key=len, reverse=True)
+    return matches[0]
+
+
+def _extract_names_ner(text: str) -> list[ExtractedPerson]:
+    """Extract PERSON entities via spaCy NER."""
     nlp = _get_nlp()
     doc = nlp(text)
-    entities = []
-
+    persons = []
     for ent in doc.ents:
-        if ent.label_ == "PERSON":
-            entities.append(ExtractedEntity(
-                text=ent.text.strip(),
-                label="PERSON",
+        if ent.label_ == "PERSON" and len(ent.text.strip()) > 2:
+            persons.append(ExtractedPerson(
+                name=ent.text.strip(),
                 start=ent.start_char,
                 end=ent.end_char,
                 source="ner",
             ))
-        elif ent.label_ in ("GPE", "LOC", "FAC"):
-            entities.append(ExtractedEntity(
-                text=ent.text.strip(),
-                label="LOCATION",
-                start=ent.start_char,
-                end=ent.end_char,
-                source="ner",
-            ))
-
-    return entities
+    return persons
 
 
-def _gazetteer_locations(text: str) -> list[ExtractedEntity]:
-    """Find gazetteer locations that NER might have missed.
+def extract_persons(text: str) -> list[ExtractedPerson]:
+    """Extract structured person records from text.
 
-    Uses whole-word boundary matching so 'ed' doesn't match inside 'arrested'.
+    Returns a list of ExtractedPerson, each with as many fields populated
+    as the source text provides. Missing fields are None — never fabricated.
     """
-    entities = []
-
-    for location in LOCATIONS_GAZETTEER:
-        # Build word-boundary pattern, handling multi-word entries like "Uttar Pradesh"
-        pattern = re.compile(rf"\b{re.escape(location)}\b")
-        for match in pattern.finditer(text):
-            entities.append(ExtractedEntity(
-                text=location,
-                label="LOCATION",
-                start=match.start(),
-                end=match.end(),
-                source="gazetteer",
-            ))
-
-    return entities
-
-
-def _deduplicate_spans(entities: list[ExtractedEntity]) -> list[ExtractedEntity]:
-    """Remove overlapping spans, keeping regex results over NER over gazetteer."""
-    if not entities:
+    if not text or len(text.strip()) < 10:
         return []
 
-    # Sort by start position, then by source priority (regex > ner > gazetteer)
-    source_priority = {"regex": 0, "ner": 1, "gazetteer": 2}
-    entities.sort(key=lambda e: (e.start, source_priority.get(e.source, 99)))
+    # Step 1: extract structured fields (apply to full text)
+    age = _extract_age(text)
+    gender = _extract_gender(text)
+    crime_type = _extract_crime_type(text)
+    status = _extract_status(text)
+    location = _extract_location(text)
+    fir_number = _extract_fir(text)
+    phone_number = _extract_phone(text)
+    plate_number = _extract_plate(text)
 
-    deduped = [entities[0]]
-    for entity in entities[1:]:
-        last = deduped[-1]
-        # Check for overlap
-        if entity.start < last.end:
-            # Keep the one with higher priority (lower source_priority number)
-            if source_priority.get(entity.source, 99) < source_priority.get(last.source, 99):
-                deduped[-1] = entity
-        else:
-            deduped.append(entity)
+    # Step 2: extract person names via NER
+    persons = _extract_names_ner(text)
 
-    return deduped
+    # If no names found via NER, return empty list — don't fabricate
+    if not persons:
+        return []
 
+    # Step 3: attach the extracted fields to each person found
+    for person in persons:
+        person.age = age
+        person.gender = gender
+        person.crime_type = crime_type
+        person.status = status
+        person.location = location
+        person.fir_number = fir_number
+        person.phone_number = phone_number
+        person.plate_number = plate_number
+        # crime_description is the full text trimmed
+        person.crime_description = text[:500]
 
-def extract_entities(text: str) -> ExtractionResult:
-    """Full extraction pipeline: regex first, then NER, then gazetteer, deduplicate."""
-    result = ExtractionResult()
-
-    # Step 1: Regex (highest priority — structured patterns)
-    regex_entities = _extract_regex(text)
-
-    # Step 2: NER
-    ner_entities = _extract_ner(text)
-
-    # Step 3: Gazetteer fallback for locations
-    gazetteer_ents = _gazetteer_locations(text)
-
-    # Step 4: Combine and deduplicate
-    all_entities = regex_entities + ner_entities + gazetteer_ents
-    deduped = _deduplicate_spans(all_entities)
-
-    # Step 5: Categorize
-    for entity in deduped:
-        if entity.label == "PERSON":
-            result.persons.append(entity)
-        elif entity.label == "LOCATION":
-            result.locations.append(entity)
-        elif entity.label == "PHONE":
-            result.phones.append(entity)
-        elif entity.label == "PLATE":
-            result.plates.append(entity)
-        elif entity.label in ("FIR", "CASE"):
-            result.case_refs.append(entity)
-
-    return result
+    return persons
 
 
-def extract_persons_from_record(record_detail: str) -> list[str]:
-    """Convenience: extract just person names from a record's detail text."""
-    result = extract_entities(record_detail)
-    return [p.text for p in result.persons]
+def extract_best_person_name(text: str) -> Optional[str]:
+    """Extract the most likely primary person name from text.
+    Returns the first PERSON entity found by NER, or None."""
+    persons = _extract_names_ner(text)
+    return persons[0].name if persons else None
 
 
 # ── Self-test ───────────────────────────────────────────────────────────────
@@ -265,24 +378,67 @@ def extract_persons_from_record(record_detail: str) -> list[str]:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-    test_texts = [
-        "Rakesh Kumar Verma, age 34, from New Delhi was arrested in connection with FIR 123/2026. Contact: +91 9876543210. Vehicle: DL 01 AB 1234.",
-        "R. Verma of Mumbai is wanted by the CBI in case CC 456/2025 for cyber fraud.",
-        "Absconding accused Pradeep Singh on the run from Lucknow, UP. Last seen near Chandigarh.",
+    tests = [
+        (
+            "Rakesh Kumar Verma, aged 34, from New Delhi was arrested "
+            "in connection with FIR 123/2026 for cyber fraud. "
+            "His vehicle registration DL 01 AB 1234 was seized. "
+            "Contact: +91 9876543210.",
+            {"age": 34, "gender": "male", "crime_type": "cyber fraud",
+             "status": "arrested", "location": "New Delhi",
+             "fir_number": "FIR 123/2026", "phone_number": "+919876543210",
+             "plate_number": "DL 01 AB 1234"},
+        ),
+        (
+            "Wanted fugitive Masood Azhar, founder of Jaish-e-Mohammed, "
+            "is a designated terrorist with an Interpol red notice. "
+            "Born in 1968, Bahawalpur, Pakistan.",
+            {"gender": None, "crime_type": "terrorism",
+             "status": "interpol red notice", "fir_number": None,
+             "age": 58},  # derived from 'Born in 1968' -> 2026-1968
+        ),
+        (
+            "She was convicted of murdering her husband in 2023. "
+            "The woman, 28, was sentenced to life imprisonment in Lucknow.",
+            {"gender": "female", "age": 28, "crime_type": "murder",
+             "status": "convicted", "location": "Lucknow"},
+        ),
+        (
+            "Absconding accused Pradeep Singh on the run from Lucknow, UP. "
+            "Last seen near Chandigarh. Interpol red notice issued.",
+            {"gender": None, "status": "absconding",
+             "location": "Chandigarh", "fir_number": None},
+        ),
+        (
+            "NIA has filed a chargesheet against 5 Myanmar nationals "
+            "arrested in Arunachal Pradesh for drug smuggling. "
+            "FIR 456/2026.",
+            {"crime_type": "narcotics", "status": "chargesheet filed",
+             "location": "Arunachal Pradesh", "fir_number": "FIR 456/2026"},
+        ),
     ]
 
-    for text in test_texts:
-        print(f"\nText: {text[:80]}...")
-        result = extract_entities(text)
-        print(f"  Persons: {[p.text for p in result.persons]}")
-        print(f"  Locations: {[l.text for l in result.locations]}")
-        print(f"  Phones: {[p.text for p in result.phones]}")
-        print(f"  Plates: {[p.text for p in result.plates]}")
-        print(f"  Case refs: {[c.text for c in result.case_refs]}")
+    print("Running entity extraction tests...\n")
 
-    # Test name extraction from records
-    names = extract_persons_from_record(
-        "FIR 789/2026 — Rakesh Kumar Verma and Pradeep Singh accused in fraud case in Delhi"
-    )
-    print(f"\nExtracted names: {names}")
+    for i, (text, expected) in enumerate(tests, 1):
+        persons = extract_persons(text)
+        if not persons:
+            print(f"Test {i}: NO PERSONS EXTRACTED (NER failed to find name)")
+            print(f"  Text: {text[:80]}...")
+            continue
+
+        p = persons[0]
+        print(f"Test {i}: {p.name}")
+        checks = []
+        for field_name in ["age", "gender", "crime_type", "status", "location", "fir_number"]:
+            expected_val = expected.get(field_name)
+            actual_val = getattr(p, field_name)
+            ok = (expected_val is None and actual_val is None) or (actual_val == expected_val)
+            checks.append(ok)
+            ok = "OK" if ok else "FAIL"
+            print(f"  {ok} {field_name}: got={actual_val}, expected={expected_val}")
+
+        all_pass = all(checks)
+        print(f"  {'PASS' if all_pass else 'PARTIAL'}\n")
+
     print("Entity extraction test complete.")

@@ -6,15 +6,15 @@ requests>=2.31.0
 beautifulsoup4>=4.12.0
 feedparser>=6.0.0
 
-# NER (Agent B)
+# NER
 spacy>=3.7.0
 
-# Fuzzy matching (Agent B)
+# Fuzzy matching
 rapidfuzz>=3.5.0
 
-# Scheduler (Agent B)
+# Scheduler
 apscheduler>=3.10.0
 
-# API (Agent B)
+# API
 fastapi>=0.104.0
 uvicorn>=0.24.0

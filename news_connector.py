@@ -1,86 +1,65 @@
 """News RSS connector for VAJRA OSINT aggregator.
 
-Polls configurable RSS feed URLs, filters by crime-related keywords,
-and stores headlines + short summaries with full source attribution.
+CHANGELOG 2026-09-06: rebuilt to run entity extraction on each headline +
+summary and store the extracted PERSON as entity_name instead of storing
+the whole headline as the name. Structured fields (crime_type, status,
+location, fir_number) extracted too.
 
-Does NOT fetch or store full article HTML — only syndicated feed content.
+Stores only syndicated headlines/summaries from public RSS feeds — never
+fetches full article HTML (copyright-safe, always links to original).
 """
 
 import logging
 import re
 import time
-from datetime import datetime, timezone
 from typing import Optional
 
 import feedparser
 
 from storage import get_connection, insert_record
+from entity_extraction import extract_persons
 
 logger = logging.getLogger(__name__)
 
-REQUEST_DELAY = 2  # seconds between feed fetches
+REQUEST_DELAY = 2
 
-# Keywords that indicate a wanted/convicted person story
 DEFAULT_KEYWORDS = [
-    "arrested",
-    "wanted",
-    "absconding",
-    "fir",
-    "chargesheet",
-    "convicted",
-    "sentence",
-    "fugitive",
-    "bounty",
-    "interpol",
-    "encounter",
-    "surrendered",
-    "acquitted",
-    "bail",
-    "custody",
-    "police",
-    "crime",
-    "murder",
-    "fraud",
-    "smuggling",
-    "narcotics",
-    "cybercrime",
+    "arrested", "wanted", "absconding", "fir", "chargesheet", "convicted",
+    "sentence", "fugitive", "bounty", "interpol", "encounter", "surrendered",
+    "acquitted", "bail", "custody", "police", "crime", "murder", "fraud",
+    "smuggling", "narcotics", "cybercrime", "drug", "extortion", "kidnapping",
+    "terror", "fired from", "warrant",
 ]
 
-# Default Indian news RSS feeds (publicly syndicated)
 DEFAULT_FEEDS = [
-    # National
     "https://feeds.feedburner.com/ndtvnews-latest",
     "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",
     "https://www.thehindu.com/news/national/feeder/default.rss",
-    # Crime/security focused
     "https://www.deccanherald.com/rss/crime",
     "https://indianexpress.com/section/india/feed/",
 ]
 
-USER_AGENT = "VAJRA-OSINT/1.0 (SIH 2026 hackathon project; educational use)"
-
 
 def _matches_keywords(text: str, keywords: list[str]) -> bool:
-    """Check if any keyword appears in the text (case-insensitive)."""
     text_lower = text.lower()
     return any(kw.lower() in text_lower for kw in keywords)
 
 
 def _clean_html(html_text: str) -> str:
-    """Strip HTML tags from feed summary content."""
     clean = re.sub(r"<[^>]+>", "", html_text)
     clean = re.sub(r"\s+", " ", clean).strip()
-    return clean[:500]  # cap summary length
+    return clean[:500]
 
 
 def sync_news(
     feeds: Optional[list[str]] = None,
     keywords: Optional[list[str]] = None,
     db_path: Optional[str] = None,
+    max_entries_per_feed: int = 100,
 ) -> int:
-    """Poll RSS feeds and store keyword-matched entries.
+    """Poll news RSS feeds, extract structured person records.
 
-    Returns the number of new records inserted.
+    Returns number of new records inserted.
     """
     if feeds is None:
         feeds = DEFAULT_FEEDS
@@ -92,7 +71,6 @@ def sync_news(
 
     for feed_url in feeds:
         logger.info("Polling feed: %s", feed_url)
-
         try:
             feed = feedparser.parse(feed_url)
         except Exception as e:
@@ -103,39 +81,61 @@ def sync_news(
             logger.warning("Feed %s returned no entries (bozo: %s)", feed_url, feed.bozo_exception)
             continue
 
-        for entry in feed.entries:
+        for entry in feed.entries[:max_entries_per_feed]:
             title = entry.get("title", "")
             summary_raw = entry.get("summary", "") or entry.get("description", "")
             summary = _clean_html(summary_raw)
             link = entry.get("link", "")
-
             combined_text = f"{title} {summary}"
 
             if not _matches_keywords(combined_text, keywords):
                 continue
-
-            # Extract entity names from the title — we store the headline
-            # as a detail record. Entity extraction (NER) is Agent B's job.
-            # For now, store the headline itself as an unextracted record.
-            # Agent B's entity_extraction.py will process these later.
-            entity_name = title  # temporary — will be refined by NER
-
-            # Only store if we have a meaningful title
             if len(title.strip()) < 10:
                 continue
 
-            ok = insert_record(
-                conn,
-                entity_name=entity_name,
-                record_type="news_headline",
-                detail=f"{title}. {summary}" if summary else title,
-                location=None,
-                source_type="news",
-                source_url=link,
-            )
-            if ok:
-                inserted += 1
-                logger.info("Inserted: %s", title[:80])
+            # Extract structured person records from the headline+summary
+            persons = extract_persons(combined_text)
+
+            # Include the crime/story context as detail
+            detail = f"{title}. {summary}" if summary else title
+
+            if persons:
+                # Store each extracted person with source citation
+                for person in persons:
+                    ok = insert_record(
+                        conn,
+                        entity_name=person.name,
+                        record_type="person",
+                        age=person.age,
+                        gender=person.gender,
+                        crime_type=person.crime_type,
+                        crime_description=person.crime_description,
+                        status=person.status,
+                        location=person.location,
+                        fir_number=person.fir_number,
+                        plate_number=person.plate_number,
+                        phone_number=person.phone_number,
+                        detail=detail[:500],
+                        source_type="news",
+                        source_url=link,
+                    )
+                    if ok:
+                        inserted += 1
+                        logger.info("Inserted person: %s (%s)", person.name, link[:60])
+            else:
+                # No person extracted but keyword matched — store headline as
+                # a lead record with detail context (no fabricated name)
+                ok = insert_record(
+                    conn,
+                    entity_name=title[:200],
+                    record_type="news_headline",
+                    detail=detail[:500],
+                    source_type="news",
+                    source_url=link,
+                )
+                if ok:
+                    inserted += 1
+                    logger.info("Inserted headline (no person found): %s", title[:60])
 
         time.sleep(REQUEST_DELAY)
 
@@ -151,6 +151,7 @@ if __name__ == "__main__":
     print("Running news connector test (1 feed)...")
     count = sync_news(
         feeds=[DEFAULT_FEEDS[0]],
-        keywords=["arrested", "wanted", "fir", "convicted"],
+        keywords=["arrested", "wanted", "fir", "convicted", "murder", "fraud"],
+        max_entries_per_feed=50,
     )
     print(f"Inserted {count} new records.")

@@ -1,17 +1,16 @@
 """Query API for VAJRA OSINT aggregator.
 
-FastAPI REST layer — the frontend consumes this, never touches the DB directly.
+FastAPI REST layer — frontend consumes this, never touches the DB directly.
 
-Endpoints:
-  GET /entities — list all known entities
-  GET /entities/<name> — all records for one entity with source citations
-  GET /entities/<name>/links — fuzzy-matched related entities
-  GET /search?q=<query> — search entities by partial name
-  GET /health — health check
+CHANGELOG 2026-09-06: added structured-field endpoints:
+  /search?q=  (name search, legacy)
+  /by-status/{status}
+  /by-crime/{crime_type}
+The /entities/{name} response now includes structured fields (age, gender,
+crime_type, status, location, fir_number, plate_number, phone_number).
 """
 
 import logging
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,18 +20,15 @@ from storage import (
     get_connection,
     get_entity_links,
     get_entity_records,
+    search_by_status,
+    search_by_crime,
     search_entities,
 )
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(
-    title="VAJRA OSINT API",
-    description="Query layer for VAJRA OSINT aggregator — SIH 2026",
-    version="1.0.0",
-)
+app = FastAPI(title="VAJRA OSINT API", description="Query layer for VAJRA OSINT — SIH 2026", version="2.0.0")
 
-# CORS for frontend dashboard
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -44,13 +40,11 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    """Health check endpoint."""
     return {"status": "ok", "service": "vajra-osint-api"}
 
 
 @app.get("/entities")
 def list_entities(limit: int = Query(100, ge=1, le=1000)):
-    """List all known entities with record counts."""
     conn = get_connection()
     try:
         entities = get_all_entities(conn)
@@ -61,7 +55,6 @@ def list_entities(limit: int = Query(100, ge=1, le=1000)):
 
 @app.get("/entities/{name}")
 def get_entity(name: str):
-    """Get all records for a specific entity, with source citations."""
     conn = get_connection()
     try:
         records = get_entity_records(conn, name)
@@ -78,17 +71,9 @@ def get_entity(name: str):
 
 @app.get("/entities/{name}/links")
 def get_links(name: str):
-    """Get fuzzy-matched related entities."""
     conn = get_connection()
     try:
         links = get_entity_links(conn, name)
-        if not links:
-            return {
-                "entity_name": name,
-                "link_count": 0,
-                "links": [],
-                "message": "No related entities found",
-            }
         return {
             "entity_name": name,
             "link_count": len(links),
@@ -100,15 +85,30 @@ def get_links(name: str):
 
 @app.get("/search")
 def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=200)):
-    """Search entities by partial name match."""
     conn = get_connection()
     try:
         results = search_entities(conn, q, limit=limit)
-        return {
-            "query": q,
-            "result_count": len(results),
-            "results": results,
-        }
+        return {"query": q, "result_count": len(results), "results": results}
+    finally:
+        conn.close()
+
+
+@app.get("/by-status/{status}")
+def by_status(status: str):
+    conn = get_connection()
+    try:
+        rows = search_by_status(conn, status)
+        return {"status": status, "result_count": len(rows), "results": rows}
+    finally:
+        conn.close()
+
+
+@app.get("/by-crime/{crime_type}")
+def by_crime(crime_type: str):
+    conn = get_connection()
+    try:
+        rows = search_by_crime(conn, crime_type)
+        return {"crime_type": crime_type, "result_count": len(rows), "results": rows}
     finally:
         conn.close()
 
@@ -117,8 +117,6 @@ def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=20
 
 if __name__ == "__main__":
     import uvicorn
-
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    print("Starting VAJRA API server at http://localhost:8000")
-    print("Docs at http://localhost:8000/docs")
+    print("Starting VAJRA API at http://localhost:8000 (docs: /docs)")
     uvicorn.run(app, host="0.0.0.0", port=8000)

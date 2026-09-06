@@ -1,95 +1,88 @@
 # VAJRA Layer 3 — Self-Updating OSINT Aggregator
 
-SIH 2026 hackathon project. Aggregates publicly available information about wanted/convicted persons from government portals, Wikipedia, and news RSS feeds. Every stored record carries full source attribution — no unsourced claims.
+SIH 2026 hackathon project. Aggregates publicly available information about wanted/convicted persons from Wikipedia, news RSS feeds, and government portals. Every record carries full source attribution and structured fields (age, gender, crime_type, status, location, FIR number, vehicle plate, phone).
 
-## Agent Split
+**Build note:** Originally planned as a two-agent build. Claude Code never contributed; Agent A (OpenCode) built the entire tool.
 
-Both lanes were originally planned as a two-agent build (OpenCode = Agent A, Claude Code = Agent B).
-Claude Code was stopped mid-session, so Agent A (OpenCode / this repository) completed both lanes.
+## Data captured per record
 
-| Lane | Build note | Files |
-|------|-----------|-------|
-| **Ingestion (Agent A)** | Built first | `storage.py`, `wikipedia_connector.py`, `news_connector.py`, `gov_portal_connector.py` |
-| **Intelligence / Serving (Agent B)** | Built by Agent A after Agent B was stopped | `entity_extraction.py`, `entity_resolution.py`, `scheduler.py`, `api.py` |
+Each stored record has structured fields when the source text provides them (missing fields are left `null` — never fabricated):
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `entity_name` | Person's name (extracted, not raw headline) | `Iqbal Shahbandri` |
+| `age` | Age or computed from DOB | `56` |
+| `gender` | male / female (from pronouns/context) | `male` |
+| `crime_type` | Normalized crime category | `terrorism`, `cyber fraud`, `murder` |
+| `crime_description` | Contextual description text | `FIR 123/2026 — accused in cyber fraud` |
+| `status` | wanted / convicted / absconding / arrested etc. | `wanted` |
+| `location` | City/state from gazetteer | `Mumbai` |
+| `fir_number` | FIR / case reference | `FIR 123/2026` |
+| `plate_number` | Vehicle registration | `DL 01 AB 1234` |
+| `phone_number` | Contact number | `+919876543210` |
+| `source_type` | wikipedia / news / gov_portal | `wikipedia` |
+| `source_url` | Exact citation URL | https://en.wikipedia.org/wiki/... |
+| `fetched_at` | Fetch timestamp | ISO date |
 
 ## Setup
 
 ```bash
 pip install -r requirements.txt
-python -m spacy download en_core_web_sm  # or en_core_web_trf if compute allows
+python -m spacy download en_core_web_sm   # or en_core_web_trf for better NER
 ```
 
 ## Running
 
-### Individual connectors (manual test)
-
-Each connector has a self-test block — run directly to verify against real data:
+### Individual connectors (self-tests)
 
 ```bash
-python wikipedia_connector.py    # pulls 3 pages from Indian fugitives category
-python news_connector.py         # polls 1 news feed
-python gov_portal_connector.py   # checks robots.txt, scrapes allowed portals
-python storage.py                # runs in-memory schema tests
+python storage.py          # schema tests
+python wikipedia_connector.py
+python news_connector.py
+python gov_portal_connector.py
+python entity_extraction.py
+python entity_resolution.py
 ```
 
 ### Scheduler (persistent process)
-
-Agent B's `scheduler.py` runs as a long-lived process:
 
 ```bash
 python scheduler.py
 ```
 
-This starts the APScheduler loop:
-- News sync: every 4 hours
-- Wikipedia sync: daily
-- Gov portal sync: daily (staggered from Wikipedia)
-- Entity resolution: nightly, after all syncs complete
-
-An initial sync runs immediately on startup.
+Same behavior as v1: initial sync on startup, then news every 4h, Wikipedia daily @02:00, gov daily @03:00, entity resolution nightly @04:00 IST. Logs to `vajra_scheduler.log`.
 
 ### API server
 
 ```bash
 python api.py
-# or
-uvicorn api:app --reload
+# docs at http://localhost:8000/docs
 ```
 
 Endpoints:
-- `GET /entities` — list all known entities
-- `GET /entities/<name>` — all records for one entity with source citations
+- `GET /entities` — list entities
+- `GET /entities/<name>` — records with structured fields + citations
 - `GET /entities/<name>/links` — fuzzy-matched related entities
+- `GET /search?q=<query>` — partial name search
+- `GET /by-status/<status>` — filter by wanted/convicted/etc.
+- `GET /by-crime/<crime>` — filter by crime type
 
 ## Adding a Government Portal
 
-1. Inspect the live HTML at the portal URL (browser DevTools)
-2. Open `gov_portal_connector.py` and find the `PORTALS` list
-3. Add a new entry with:
-   - `name`: human-readable label
-   - `url`: the wanted-persons page URL
-   - `selectors`: CSS selectors for `container`, `name`, `detail`, `location`
-4. Verify `robots.txt` allows scraping (the tool checks this automatically)
-5. Run `python gov_portal_connector.py` to test
+1. Inspect the live HTML at the portal URL
+2. Open `gov_portal_connector.py`, add entry to `PORTALS` with `container` + `text` CSS selectors
+3. Verify `robots.txt` allows it (tool checks automatically)
+4. Test with `python gov_portal_connector.py`
 
 ## Legal Boundary
 
-This tool is designed to stay strictly within legal bounds:
-
-- **Sources**: Only official public records — government wanted-persons portals, court record portals (eCourts), NCRB open data, press releases, and RSS feeds explicitly published for syndication.
-- **No private data**: Does NOT scrape social media profiles, private forums, or any source requiring login/bypassing access controls.
-- **No fabrication**: Never infers or fabricates personal data (DOB, address, etc.) not explicitly present in the source text. Missing fields are left null.
-- **Citation required**: Every stored record carries `source_url`, `source_type`, and `fetched_at`. No record exists without a traceable citation.
-- **Scraping etiquette**: Checks `robots.txt` before scraping, rate-limits requests (2s delay between calls to the same host), sets a descriptive User-Agent.
-- **Copyright**: Stores only headlines/short summaries from news sources — never fetches or republishes full article text.
+- **Sources**: only official public records — gov wanted-persons portals, court portals, NCRB open data, press releases, syndicated RSS feeds. No social media, no login/bypass.
+- **No fabrication**: never infers DOB/address/etc. not in the source. Missing fields stay `null`. Person names only stored when NER finds an explicit name.
+- **Citation required**: every record has `source_url`, `source_type`, `fetched_at`.
+- **Scraping etiquette**: robots.txt check, 2s rate limiting, descriptive User-Agent.
+- **Copyright**: headlines/short summaries only, always link to original.
+- **Entity resolution**: matches < 95% flagged for human review, never auto-merged.
 
 ## Tech Stack
 
-- Python 3.11+
-- SQLite (portable to Postgres)
-- spaCy (NER)
-- BeautifulSoup4 + requests (scraping)
-- feedparser (RSS)
-- rapidfuzz (fuzzy entity matching)
-- APScheduler (scheduled syncs)
-- FastAPI (query API)
+Python 3.11+ · SQLite · spaCy (NER) · requests + BeautifulSoup4 · feedparser · rapidfuzz · APScheduler · FastAPI
