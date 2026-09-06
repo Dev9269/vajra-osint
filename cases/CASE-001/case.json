@@ -1,0 +1,18 @@
+{
+  "case_id": "CASE-001",
+  "title": "Fake Chinese Loan-App Scam / Money-Laundering Cluster",
+  "jurisdiction": ["Kerala, India", "Haryana, India"],
+  "investigating_agency": "Directorate of Enforcement (ED)",
+  "ecir": "ECIR/KCZO/06/2024",
+  "case_nature": "real_public_source_osint",
+  "dataset_purpose": "Benchmark OSINT ingestion, entity resolution, relationship extraction, temporal graph construction, source provenance, and uncertainty handling.",
+  "legal_notice": "This dataset records public-source reporting, agency claims, prosecution allegations, and court-recorded material. It does not establish guilt. Status fields must be preserved by downstream systems.",
+  "created_for": "AI-Powered Criminal Network Analysis System prototype / SIH26189",
+  "created_at": "2026-09-06",
+  "source_scope": "Publicly available ED releases, Kerala High Court judgment, and news reports.",
+  "known_scope_notes": [
+    "ED reported different aggregate figures at different stages of the investigation; these are retained as separate observations rather than normalized away.",
+    "A news report spells Daniel Selvakumar's name as Daniel Shivakumar; the official ED release uses Daniel Selvakumar. Preserve both as source variants.",
+    "Names such as Leema/Leema and Angel/Angel appear in court-recorded prosecution material; they should not be treated as adjudicated criminal findings."
+  ]
+}

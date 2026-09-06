@@ -1,0 +1,28 @@
+{
+  "case_id": "CASE-002",
+  "title": "Mundra Port Narcotics Trafficking Network",
+  "short_name": "Mundra Drugs Seizure Case",
+  "real_case": true,
+  "case_reference": "RC-26/2021/NIA/DLI",
+  "crime_types": [
+    "narcotics trafficking",
+    "cross-border smuggling",
+    "concealment in commercial cargo",
+    "document / trade-route misuse"
+  ],
+  "primary_agencies": [
+    "Directorate of Revenue Intelligence",
+    "National Investigation Agency"
+  ],
+  "primary_jurisdictions": [
+    "Gujarat",
+    "Delhi",
+    "Andhra Pradesh",
+    "Tamil Nadu",
+    "Afghanistan",
+    "Iran",
+    "Dubai, UAE"
+  ],
+  "dataset_note": "Public-source benchmark. Allegations are preserved as allegations; court outcomes and procedural facts are not converted into convictions.",
+  "as_of": "2026-09-06"
+}

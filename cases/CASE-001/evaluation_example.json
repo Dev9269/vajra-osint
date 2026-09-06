@@ -1,0 +1,283 @@
+{
+  "benchmark": "CASE-001 OSINT Extraction Benchmark v1",
+  "not_a_finding_of_guilt": true,
+  "metrics": {
+    "entity_extraction": {
+      "precision": 1.0,
+      "recall": 0.06153846153846154,
+      "f1": 0.11594202898550725,
+      "tp": 4,
+      "fp": 0,
+      "fn": 61
+    },
+    "relationship_extraction": {
+      "precision": 1.0,
+      "recall": 0.047619047619047616,
+      "f1": 0.0909090909090909,
+      "tp": 2,
+      "fp": 0,
+      "fn": 40,
+      "provenance_accuracy": 1.0,
+      "provenance_evaluated": 2
+    },
+    "event_extraction": {
+      "precision": 1.0,
+      "recall": 0.18181818181818182,
+      "f1": 0.3076923076923077,
+      "tp": 2,
+      "fp": 0,
+      "fn": 9
+    },
+    "financial_observation_id_match": {
+      "precision": 1.0,
+      "recall": 0.05,
+      "f1": 0.09523809523809523,
+      "tp": 1,
+      "fp": 0,
+      "fn": 19
+    },
+    "temporal_accuracy": {
+      "accuracy": 0.18181818181818182,
+      "correct": 2,
+      "evaluated": 11
+    },
+    "financial_field_accuracy": {
+      "accuracy": 0.05,
+      "exact_matches": 1,
+      "evaluated": 20,
+      "field_accuracy": {
+        "metric": 1.0,
+        "value": 1.0,
+        "currency": 1.0,
+        "scope": 1.0,
+        "date": 1.0
+      },
+      "warning": "Financial observations are matched as source-scoped observations; stage-dependent aggregates must not be summed."
+    },
+    "false_positive_suppression": {
+      "checked_entity_predictions": 3,
+      "violations": 0,
+      "details": [],
+      "accuracy": 1.0
+    }
+  },
+  "per_document": {
+    "entities": {
+      "DOC001": {
+        "precision": 1.0,
+        "recall": 0.3333333333333333,
+        "f1": 0.5,
+        "tp": 4,
+        "fp": 0,
+        "fn": 8
+      },
+      "DOC002": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 18
+      },
+      "DOC003": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 12
+      },
+      "DOC004": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 10
+      },
+      "DOC005": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 10
+      },
+      "DOC006": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 3
+      }
+    },
+    "relationships": {
+      "DOC001": {
+        "precision": 1.0,
+        "recall": 0.25,
+        "f1": 0.4,
+        "tp": 2,
+        "fp": 0,
+        "fn": 6,
+        "provenance_accuracy": 1.0
+      },
+      "DOC002": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 8,
+        "provenance_accuracy": null
+      },
+      "DOC003": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 13,
+        "provenance_accuracy": null
+      },
+      "DOC004": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 6,
+        "provenance_accuracy": null
+      },
+      "DOC005": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 5,
+        "provenance_accuracy": null
+      },
+      "DOC006": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 2,
+        "provenance_accuracy": null
+      }
+    },
+    "events": {
+      "DOC001": {
+        "precision": 1.0,
+        "recall": 0.6666666666666666,
+        "f1": 0.8,
+        "tp": 2,
+        "fp": 0,
+        "fn": 1
+      },
+      "DOC002": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 3
+      },
+      "DOC003": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 1
+      },
+      "DOC004": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 2
+      },
+      "DOC005": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 1
+      },
+      "DOC006": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 1
+      }
+    },
+    "financial_observation_ids": {
+      "DOC001": {
+        "precision": 1.0,
+        "recall": 0.14285714285714285,
+        "f1": 0.25,
+        "tp": 1,
+        "fp": 0,
+        "fn": 6
+      },
+      "DOC002": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 4
+      },
+      "DOC003": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 5
+      },
+      "DOC004": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 3
+      },
+      "DOC005": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 0
+      },
+      "DOC006": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 1
+      }
+    }
+  },
+  "prediction_coverage": {
+    "gold_documents": 6,
+    "predicted_documents": 1,
+    "missing_prediction_documents": [
+      "DOC002",
+      "DOC003",
+      "DOC004",
+      "DOC005",
+      "DOC006"
+    ]
+  }
+}

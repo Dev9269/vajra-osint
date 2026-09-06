@@ -16,3 +16,6 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Case pipeline generated outputs
+cases/**/run_output/

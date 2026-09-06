@@ -120,6 +120,35 @@ Endpoints:
 - `GET /by-status/<status>` — filter by wanted/convicted/etc.
 - `GET /by-crime/<crime>` — filter by crime type
 
+## Real Case Datasets (SIH26189)
+
+Two real public-source OSINT benchmark cases ship in `cases/`:
+
+| Case | Topic | Run |
+|------|-------|-----|
+| CASE-001 | Fake Chinese Loan-App / Money-Laundering cluster (ED, Kerala/Haryana) | `cd cases/CASE-001 && python run_case001.py --case-dir . --output-dir run_output` |
+| CASE-002 | Mundra Port narcotics trafficking network (NIA, RC-26/2021/NIA/DLI) | `cd cases/CASE-002 && python run_case002.py --case-dir . --output-dir run_output` |
+
+Each pipeline runs extraction → graph analytics → benchmark evaluation, writing
+`run_output/predictions.jsonl`, `graph_analysis.json`, `evaluation_report.json`.
+These run dependency-free (pure stdlib) and are deliberately conservative —
+the included `osint_engine.py` is an offline baseline you can swap for the
+VAJRA NER/LLM pipeline via the same prediction schema.
+
+### Ingest cases into the VAJRA API
+
+`cases/ingest_cases.py` maps each case's curated entities, sources and
+relationships into the same `records` + `entity_links` tables the API serves,
+preserving `status` and provenance (`needs_review`; court/adjudicated facts are
+not converted into convictions):
+
+```powershell
+set VAJRA_API_KEY=your-secret-key
+python cases/ingest_cases.py          # both cases
+python cases/ingest_cases.py --cases CASE-002
+python api.py                          # then query /entities, /search?q=...
+```
+
 ## Adding a Government Portal
 
 1. Inspect the live HTML at the portal URL

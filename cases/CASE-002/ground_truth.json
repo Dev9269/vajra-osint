@@ -1,0 +1,41 @@
+{
+  "case_id": "CASE-002",
+  "benchmark_principle": "Evaluate extraction without exposing the full gold graph as model input.",
+  "high_value_entity_aliases": {
+    "P001": [
+      "Harpreet Singh Talwar",
+      "Kabir Talwar"
+    ],
+    "P004": [
+      "Vityash Koser",
+      "Raju Dubai"
+    ],
+    "P007": [
+      "Machavaram Sudhakar",
+      "M. Sudhakaran"
+    ],
+    "P008": [
+      "Durga P V Govindaraju",
+      "Govindaraju Vaishali"
+    ],
+    "P009": [
+      "Rajkumar P",
+      "Rajkumar Perumal"
+    ]
+  },
+  "must_preserve_status": {
+    "R001": "prosecution_allegation",
+    "R003": "prosecution_allegation",
+    "R006": "court_record",
+    "R017": "official_case_record",
+    "EV009": "court_outcome"
+  },
+  "challenge_cases": [
+    "name aliases",
+    "court-vs-news source reconciliation",
+    "shipment identity resolution",
+    "route extraction",
+    "role classification",
+    "source-specific quantitative discrepancies"
+  ]
+}

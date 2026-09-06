@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS entity_links (
     entity_b TEXT NOT NULL,
     match_score REAL NOT NULL,
     match_status TEXT NOT NULL DEFAULT 'needs_review',
+    relation TEXT,
+    description TEXT,
     linked_at TEXT NOT NULL,
     UNIQUE(entity_a, entity_b)
 );
@@ -138,6 +140,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if links_exists and "match_status" not in ecols:
         conn.execute("ALTER TABLE entity_links ADD COLUMN match_status TEXT NOT NULL DEFAULT 'needs_review'")
         conn.commit()
+    if links_exists and "relation" not in ecols:
+        conn.execute("ALTER TABLE entity_links ADD COLUMN relation TEXT")
+        conn.commit()
+    if links_exists and "description" not in ecols:
+        conn.execute("ALTER TABLE entity_links ADD COLUMN description TEXT")
+        conn.commit()
 
 
 def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
@@ -198,6 +206,8 @@ def insert_entity_link(
     entity_b: str,
     match_score: float,
     match_status: str = "needs_review",
+    relation: Optional[str] = None,
+    description: Optional[str] = None,
     linked_at: Optional[str] = None,
 ) -> bool:
     if match_status not in ("auto_confirmed", "needs_review"):
@@ -208,13 +218,15 @@ def insert_entity_link(
         entity_a, entity_b = entity_b, entity_a
     try:
         conn.execute(
-            """INSERT INTO entity_links (entity_a, entity_b, match_score, match_status, linked_at)
-               VALUES (?, ?, ?, ?, ?)
+            """INSERT INTO entity_links (entity_a, entity_b, match_score, match_status, relation, description, linked_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(entity_a, entity_b) DO UPDATE SET
                    match_score = excluded.match_score,
                    match_status = excluded.match_status,
+                   relation = excluded.relation,
+                   description = excluded.description,
                    linked_at = excluded.linked_at""",
-            (entity_a, entity_b, match_score, match_status, linked_at),
+            (entity_a, entity_b, match_score, match_status, relation, description, linked_at),
         )
         conn.commit()
         return True
@@ -246,7 +258,7 @@ def get_entity_records(conn: sqlite3.Connection, entity_name: str) -> list[dict]
 
 def get_entity_links(conn: sqlite3.Connection, entity_name: str) -> list[dict]:
     rows = conn.execute(
-        """SELECT entity_a, entity_b, match_score, match_status, linked_at
+        """SELECT entity_a, entity_b, match_score, match_status, relation, description, linked_at
            FROM entity_links
            WHERE entity_a = ? OR entity_b = ?
            ORDER BY match_score DESC""",

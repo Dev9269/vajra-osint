@@ -1,0 +1,371 @@
+{
+  "nodes": [
+    {
+      "entity_id": "P001",
+      "name": "Sayid Muhammad",
+      "entity_type": "person",
+      "legal_status": "accused; allegations recorded in public sources",
+      "document_count": 3,
+      "documents": [
+        "DOC001",
+        "DOC003",
+        "DOC004"
+      ]
+    },
+    {
+      "entity_id": "P002",
+      "name": "Varghese T G",
+      "entity_type": "person",
+      "legal_status": "accused; allegations recorded in public sources",
+      "document_count": 2,
+      "documents": [
+        "DOC001",
+        "DOC004"
+      ]
+    },
+    {
+      "entity_id": "PL001",
+      "name": "WazirX",
+      "entity_type": "platform",
+      "legal_status": null,
+      "document_count": 1,
+      "documents": [
+        "DOC001"
+      ]
+    },
+    {
+      "entity_id": "L006",
+      "name": "Singapore",
+      "entity_type": "location",
+      "legal_status": null,
+      "document_count": 2,
+      "documents": [
+        "DOC001",
+        "DOC002"
+      ]
+    },
+    {
+      "entity_id": "CL001",
+      "name": "Mule bank account cluster",
+      "entity_type": "account_cluster",
+      "legal_status": null,
+      "document_count": 3,
+      "documents": [
+        "DOC001",
+        "DOC002",
+        "DOC004"
+      ]
+    },
+    {
+      "entity_id": "CL002",
+      "name": "WazirX crypto-account cluster",
+      "entity_type": "crypto_account_cluster",
+      "legal_status": null,
+      "document_count": 3,
+      "documents": [
+        "DOC001",
+        "DOC003",
+        "DOC004"
+      ]
+    },
+    {
+      "entity_id": "CL004",
+      "name": "Victims of fake loan-app scam",
+      "entity_type": "victim_cluster",
+      "legal_status": null,
+      "document_count": 4,
+      "documents": [
+        "DOC001",
+        "DOC003",
+        "DOC005",
+        "DOC006"
+      ]
+    },
+    {
+      "entity_id": "CL005",
+      "name": "Shell / intermediary company cluster",
+      "entity_type": "shell_entity_cluster",
+      "legal_status": null,
+      "document_count": 2,
+      "documents": [
+        "DOC001",
+        "DOC002"
+      ]
+    },
+    {
+      "entity_id": "P003",
+      "name": "Daniel Selvakumar",
+      "entity_type": "person",
+      "legal_status": "accused; source-variant naming retained",
+      "document_count": 2,
+      "documents": [
+        "DOC002",
+        "DOC004"
+      ]
+    },
+    {
+      "entity_id": "P004",
+      "name": "Allen Samuel",
+      "entity_type": "person",
+      "legal_status": "accused; allegations recorded in public sources",
+      "document_count": 1,
+      "documents": [
+        "DOC002"
+      ]
+    },
+    {
+      "entity_id": "P005",
+      "name": "Anto Paul Prakash",
+      "entity_type": "person",
+      "legal_status": "accused; allegations recorded in public sources",
+      "document_count": 1,
+      "documents": [
+        "DOC002"
+      ]
+    },
+    {
+      "entity_id": "P006",
+      "name": "Kathiravan Ravi",
+      "entity_type": "person",
+      "legal_status": "accused; allegations recorded in public sources",
+      "document_count": 1,
+      "documents": [
+        "DOC002"
+      ]
+    },
+    {
+      "entity_id": "O001",
+      "name": "Xoduz Solutions Pvt. Ltd.",
+      "entity_type": "organization",
+      "legal_status": null,
+      "document_count": 1,
+      "documents": [
+        "DOC002"
+      ]
+    },
+    {
+      "entity_id": "O002",
+      "name": "Tyrannus Technology Pvt. Ltd.",
+      "entity_type": "organization",
+      "legal_status": null,
+      "document_count": 1,
+      "documents": [
+        "DOC002"
+      ]
+    },
+    {
+      "entity_id": "O004",
+      "name": "Global Expositions and Infomedia Solutions",
+      "entity_type": "organization",
+      "legal_status": null,
+      "document_count": 1,
+      "documents": [
+        "DOC002"
+      ]
+    },
+    {
+      "entity_id": "CL003",
+      "name": "Foreign wallet cluster",
+      "entity_type": "wallet_cluster",
+      "legal_status": null,
+      "document_count": 2,
+      "documents": [
+        "DOC002",
+        "DOC003"
+      ]
+    },
+    {
+      "entity_id": "P007",
+      "name": "Nitin Varghese",
+      "entity_type": "person",
+      "legal_status": "prosecution_allegation",
+      "document_count": 2,
+      "documents": [
+        "DOC003",
+        "DOC005"
+      ]
+    },
+    {
+      "entity_id": "P008",
+      "name": "Leema",
+      "entity_type": "person",
+      "legal_status": "prosecution_allegation / media_report",
+      "document_count": 2,
+      "documents": [
+        "DOC003",
+        "DOC005"
+      ]
+    },
+    {
+      "entity_id": "P009",
+      "name": "Angel",
+      "entity_type": "person",
+      "legal_status": "prosecution_allegation",
+      "document_count": 1,
+      "documents": [
+        "DOC003"
+      ]
+    },
+    {
+      "entity_id": "PL002",
+      "name": "WhatsApp",
+      "entity_type": "platform",
+      "legal_status": null,
+      "document_count": 1,
+      "documents": [
+        "DOC003"
+      ]
+    },
+    {
+      "entity_id": "PL003",
+      "name": "Social media",
+      "entity_type": "platform_category",
+      "legal_status": null,
+      "document_count": 2,
+      "documents": [
+        "DOC003",
+        "DOC005"
+      ]
+    },
+    {
+      "entity_id": "O009",
+      "name": "Vicky Venkat Technology",
+      "entity_type": "organization",
+      "legal_status": null,
+      "document_count": 1,
+      "documents": [
+        "DOC004"
+      ]
+    },
+    {
+      "entity_id": "O010",
+      "name": "Vikrah Trading Enterprise",
+      "entity_type": "organization",
+      "legal_status": null,
+      "document_count": 1,
+      "documents": [
+        "DOC004"
+      ]
+    },
+    {
+      "entity_id": "P010",
+      "name": "Raphael James Rozario",
+      "entity_type": "person",
+      "legal_status": "media_report / allegation",
+      "document_count": 1,
+      "documents": [
+        "DOC005"
+      ]
+    },
+    {
+      "entity_id": "P011",
+      "name": "Afreed K Y",
+      "entity_type": "person",
+      "legal_status": "media_report / allegation",
+      "document_count": 1,
+      "documents": [
+        "DOC005"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "relationship_id": "R001",
+      "source": "P001",
+      "relation": "allegedly_arranged",
+      "target": "CL001",
+      "status": "agency_claim",
+      "source_ids": [
+        "SRC001",
+        "SRC003"
+      ],
+      "doc_id": "DOC001"
+    },
+    {
+      "relationship_id": "R002",
+      "source": "P002",
+      "relation": "allegedly_part_of",
+      "target": "CL001",
+      "status": "agency_claim",
+      "source_ids": [
+        "SRC001",
+        "SRC004"
+      ],
+      "doc_id": "DOC001"
+    },
+    {
+      "relationship_id": "R014",
+      "source": "CL002",
+      "relation": "facilitated_remittance_to",
+      "target": "CL003",
+      "status": "agency_claim",
+      "source_ids": [
+        "SRC001"
+      ],
+      "doc_id": "DOC001"
+    },
+    {
+      "relationship_id": "R001",
+      "source": "P001",
+      "relation": "allegedly_arranged",
+      "target": "CL001",
+      "status": "agency_claim",
+      "source_ids": [
+        "SRC001",
+        "SRC003"
+      ],
+      "doc_id": "DOC003"
+    },
+    {
+      "relationship_id": "R018",
+      "source": "DIG001",
+      "relation": "distributed_via",
+      "target": "PL003",
+      "status": "court_record",
+      "source_ids": [
+        "SRC003",
+        "SRC005"
+      ],
+      "doc_id": "DOC003"
+    },
+    {
+      "relationship_id": "R019",
+      "source": "DIG001",
+      "relation": "communicated_via",
+      "target": "PL002",
+      "status": "court_record",
+      "source_ids": [
+        "SRC003"
+      ],
+      "doc_id": "DOC003"
+    },
+    {
+      "relationship_id": "R002",
+      "source": "P002",
+      "relation": "allegedly_part_of",
+      "target": "CL001",
+      "status": "agency_claim",
+      "source_ids": [
+        "SRC001",
+        "SRC004"
+      ],
+      "doc_id": "DOC004"
+    },
+    {
+      "relationship_id": "R018",
+      "source": "DIG001",
+      "relation": "distributed_via",
+      "target": "PL003",
+      "status": "court_record",
+      "source_ids": [
+        "SRC003",
+        "SRC005"
+      ],
+      "doc_id": "DOC005"
+    }
+  ],
+  "stats": {
+    "nodes": 25,
+    "edges": 8
+  }
+}

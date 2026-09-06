@@ -1,0 +1,16 @@
+{
+  "matching": {
+    "entities": "stable entity_id OR exact/normalized alias match",
+    "relationships": "relationship_id preferred; otherwise source+target+relationship",
+    "financials": "observation_id preferred; otherwise metric+normalized scope/date"
+  },
+  "metrics": [
+    "precision",
+    "recall",
+    "f1",
+    "status_accuracy",
+    "temporal_accuracy"
+  ],
+  "false_positive_policy": "Unknown entities/relationships should be penalized when not supported by case annotations.",
+  "legal_safety": "Do not convert allegations into findings of guilt."
+}

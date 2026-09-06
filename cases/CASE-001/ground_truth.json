@@ -1,0 +1,25 @@
+{
+  "benchmark_type": "source_backed_gold_graph",
+  "not_a_finding_of_guilt": true,
+  "purpose": "Evaluate an OSINT pipeline against relationships explicitly supported by public sources while preserving legal uncertainty.",
+  "gold_edge_policy": "An edge is gold only when a source explicitly supports the stated relationship. Inferred edges should be evaluated separately.",
+  "gold_relationship_ids": ["R003","R004","R005","R006","R007","R008","R013","R014","R016","R017","R018","R019"],
+  "high_value_uncertain_relationships": ["R001","R002","R009","R010","R011","R020","R021","R025","R026","R027","R028","R029","R030"],
+  "evaluation_targets": [
+    "person and organization entity resolution",
+    "name-variant handling",
+    "source provenance retention",
+    "relationship extraction with legal-status labels",
+    "temporal aggregation",
+    "money-flow path reconstruction",
+    "community / bridge-node analysis",
+    "contradictory-or-stage-dependent aggregate metrics",
+    "distinguishing criminal actors from payment channels and platforms"
+  ],
+  "forbidden_shortcuts": [
+    "Do not mark an accused person as convicted.",
+    "Do not convert an agency allegation into an adjudicated fact.",
+    "Do not label Nium India or WazirX as criminal organizations merely because they occur in the investigative graph.",
+    "Do not merge January and February 2025 aggregate financial figures into one total."
+  ]
+}

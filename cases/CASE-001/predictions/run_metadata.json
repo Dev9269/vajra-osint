@@ -1,0 +1,12 @@
+{
+  "engine": "CASE-001 offline deterministic baseline",
+  "documents_processed": 6,
+  "predictions_file": "/mnt/data/case001_work/CASE-001/predictions/predictions.jsonl",
+  "graph_file": "/mnt/data/case001_work/CASE-001/predictions/network_graph.json",
+  "limitations": [
+    "Pattern-based baseline; not a substitute for transformer/LLM extraction.",
+    "Uses only entities/relations already represented in the benchmark registry.",
+    "Does not access the live web or social media.",
+    "Does not infer guilt or private identifiers."
+  ]
+}

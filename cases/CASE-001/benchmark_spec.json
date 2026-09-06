@@ -1,0 +1,31 @@
+{
+  "benchmark_name": "CASE-001 OSINT Extraction Benchmark v1",
+  "input_file": "raw_documents.jsonl",
+  "gold_file": "benchmark_annotations.jsonl",
+  "ground_truth_file": "ground_truth.json",
+  "privacy_rule": "Use only public-source content already represented here; do not infer or add private identifiers.",
+  "evaluation_protocol": {
+    "entity_resolution": "Map mentions/aliases to stable entity IDs. Do not require exact string match.",
+    "relation_extraction": "Score precision/recall/F1 only for relationships explicitly supported by the source document. Preserve relation status.",
+    "financial_extraction": "Match metric, value, currency, scope, date and source. Never sum stage-dependent aggregates.",
+    "temporal_extraction": "Recover publication/event dates and distinguish event date from publication date.",
+    "uncertainty": "Predictions that drop agency_claim/prosecution_allegation/media_report status should be penalized as a provenance error.",
+    "false_positive_suppression": "A platform or payment company mention alone is not evidence that the platform/company is a criminal actor."
+  },
+  "recommended_metrics": {
+    "entity_precision": "TP_entities/(TP_entities+FP_entities)",
+    "entity_recall": "TP_entities/(TP_entities+FN_entities)",
+    "relation_precision": "TP_relations/(TP_relations+FP_relations)",
+    "relation_recall": "TP_relations/(TP_relations+FN_relations)",
+    "relation_f1": "2*P*R/(P+R)",
+    "provenance_accuracy": "correct status+source assignments / extracted claims with provenance",
+    "temporal_accuracy": "correct dates / temporal fields evaluated"
+  },
+  "test_modes": [
+    "blind_extraction",
+    "incremental_update",
+    "cross_source_entity_resolution",
+    "temporal_consistency",
+    "false_positive_stress_test"
+  ]
+}
