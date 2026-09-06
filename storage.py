@@ -4,8 +4,16 @@ CHANGELOG 2026-09-06: schema redesigned — added structured person fields
 (age, crime_type, crime_description, status, gender, fir_number, plate_number,
 phone_number). UNIQUE constraint changed to entity_name+source_url+fir_number
 to allow same person appearing in different sources with different case numbers.
+
+CHANGELOG 2026-09-06 (bugfix round):
+  - #8: dedup now uses a NON-NULLABLE dedup_key (sha256 of entity_name +
+    source_url + detail) because SQLite treats NULL fir_number as always
+    distinct in a UNIQUE constraint, so re-syncs duplicated rows.
+  - #4: entity_links gained a match_status column ('auto_confirmed' /
+    'needs_review') so the review decision is stored, not recomputed.
 """
 
+import hashlib
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,10 +36,10 @@ CREATE TABLE IF NOT EXISTS records (
     plate_number TEXT,
     phone_number TEXT,
     detail TEXT,
+    dedup_key TEXT NOT NULL UNIQUE,
     source_type TEXT NOT NULL,
     source_url TEXT NOT NULL,
-    fetched_at TEXT NOT NULL,
-    UNIQUE(entity_name, source_url, fir_number)
+    fetched_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS entity_links (
@@ -39,6 +47,7 @@ CREATE TABLE IF NOT EXISTS entity_links (
     entity_a TEXT NOT NULL,
     entity_b TEXT NOT NULL,
     match_score REAL NOT NULL,
+    match_status TEXT NOT NULL DEFAULT 'needs_review',
     linked_at TEXT NOT NULL,
     UNIQUE(entity_a, entity_b)
 );
@@ -52,12 +61,92 @@ CREATE INDEX IF NOT EXISTS idx_entity_links_b ON entity_links(entity_b);
 """
 
 
+def dedup_key_for(entity_name: Optional[str], source_url: str, fir_number: Optional[str]) -> str:
+    """Stable dedup key. FIR number is COALESCE'd to '' so NULL fir_number no
+    longer defeats the UNIQUE constraint (the #8 bug)."""
+    base = "|".join([entity_name or "", source_url or "", fir_number or ""])
+    return hashlib.sha256(base.encode("utf-8")).hexdigest()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Bring an older database up to the current schema.
+
+    v1 -> v2: records table gained a NON-NULL dedup_key and dropped the
+    broken UNIQUE(entity_name, source_url, fir_number); entity_links gained
+    match_status. Existing rows are backfilled with their dedup_key and
+    deduplicated (latest fetched_at wins) if past NULL-fir `INSERT OR
+    REPLACE`-style duplication already happened.
+    """
+    rcols = {r[1] for r in conn.execute("PRAGMA table_info(records)")}
+    records_exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='records'"
+    ).fetchone() is not None
+    if records_exists and "dedup_key" not in rcols:
+        old_cols = [r[1] for r in conn.execute("PRAGMA table_info(records)")]
+        rows = conn.execute("SELECT * FROM records ORDER BY fetched_at DESC").fetchall()
+        seen = set()
+        keep = []
+        for r in rows:
+            d = dict(zip(old_cols, r))
+            key = dedup_key_for(d.get("entity_name"), d.get("source_url") or "", d.get("fir_number"))
+            if key in seen:
+                continue
+            seen.add(key)
+            keep.append(d)
+        conn.execute("DROP TABLE records")
+        conn.executescript("""
+            CREATE TABLE records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_name TEXT NOT NULL,
+                record_type TEXT NOT NULL DEFAULT 'person',
+                age INTEGER,
+                gender TEXT,
+                crime_type TEXT,
+                crime_description TEXT,
+                status TEXT,
+                location TEXT,
+                fir_number TEXT,
+                plate_number TEXT,
+                phone_number TEXT,
+                detail TEXT,
+                dedup_key TEXT NOT NULL UNIQUE,
+                source_type TEXT NOT NULL,
+                source_url TEXT NOT NULL,
+                fetched_at TEXT NOT NULL
+            )
+        """)
+        for d in keep:
+            conn.execute(
+                """INSERT INTO records
+                   (entity_name, record_type, age, gender, crime_type, crime_description,
+                    status, location, fir_number, plate_number, phone_number, detail,
+                    dedup_key, source_type, source_url, fetched_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (d.get("entity_name"), d.get("record_type") or "person", d.get("age"),
+                 d.get("gender"), d.get("crime_type"), d.get("crime_description"),
+                 d.get("status"), d.get("location"), d.get("fir_number"), d.get("plate_number"),
+                 d.get("phone_number"), d.get("detail"),
+                 dedup_key_for(d.get("entity_name"), d.get("source_url") or "", d.get("fir_number")),
+                 d.get("source_type"), d.get("source_url"), d.get("fetched_at")),
+            )
+        conn.commit()
+
+    ecols = {r[1] for r in conn.execute("PRAGMA table_info(entity_links)")}
+    links_exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='entity_links'"
+    ).fetchone() is not None
+    if links_exists and "match_status" not in ecols:
+        conn.execute("ALTER TABLE entity_links ADD COLUMN match_status TEXT NOT NULL DEFAULT 'needs_review'")
+        conn.commit()
+
+
 def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
     path = db_path or DB_PATH
     conn = sqlite3.connect(str(path))
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.row_factory = sqlite3.Row
+    _migrate(conn)
     conn.executescript(SCHEMA_SQL)
     return conn
 
@@ -84,16 +173,17 @@ def insert_record(
     """Insert a record. Returns True if inserted, False if duplicate."""
     if fetched_at is None:
         fetched_at = datetime.now(timezone.utc).isoformat()
+    dedup_key = dedup_key_for(entity_name, source_url, fir_number)
     try:
         conn.execute(
             """INSERT INTO records
                (entity_name, record_type, age, gender, crime_type, crime_description,
                 status, location, fir_number, plate_number, phone_number, detail,
-                source_type, source_url, fetched_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                dedup_key, source_type, source_url, fetched_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (entity_name, record_type, age, gender, crime_type, crime_description,
              status, location, fir_number, plate_number, phone_number, detail,
-             source_type, source_url, fetched_at),
+             dedup_key, source_type, source_url, fetched_at),
         )
         conn.commit()
         return True
@@ -107,17 +197,24 @@ def insert_entity_link(
     entity_a: str,
     entity_b: str,
     match_score: float,
+    match_status: str = "needs_review",
     linked_at: Optional[str] = None,
 ) -> bool:
+    if match_status not in ("auto_confirmed", "needs_review"):
+        raise ValueError("match_status must be 'auto_confirmed' or 'needs_review'")
     if linked_at is None:
         linked_at = datetime.now(timezone.utc).isoformat()
     if entity_a.lower() > entity_b.lower():
         entity_a, entity_b = entity_b, entity_a
     try:
         conn.execute(
-            """INSERT INTO entity_links (entity_a, entity_b, match_score, linked_at)
-               VALUES (?, ?, ?, ?)""",
-            (entity_a, entity_b, match_score, linked_at),
+            """INSERT INTO entity_links (entity_a, entity_b, match_score, match_status, linked_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(entity_a, entity_b) DO UPDATE SET
+                   match_score = excluded.match_score,
+                   match_status = excluded.match_status,
+                   linked_at = excluded.linked_at""",
+            (entity_a, entity_b, match_score, match_status, linked_at),
         )
         conn.commit()
         return True
@@ -149,7 +246,7 @@ def get_entity_records(conn: sqlite3.Connection, entity_name: str) -> list[dict]
 
 def get_entity_links(conn: sqlite3.Connection, entity_name: str) -> list[dict]:
     rows = conn.execute(
-        """SELECT entity_a, entity_b, match_score, linked_at
+        """SELECT entity_a, entity_b, match_score, match_status, linked_at
            FROM entity_links
            WHERE entity_a = ? OR entity_b = ?
            ORDER BY match_score DESC""",
@@ -238,9 +335,49 @@ if __name__ == "__main__":
     )
     assert not ok3, "Exact duplicate should fail"
 
+    # #8 regression: NULL fir_number must still dedup on re-sync
+    ok4 = insert_record(
+        conn,
+        entity_name="Amit Kumar",
+        source_type="news",
+        source_url="https://example.com/amit-article",
+    )
+    assert ok4, "First insert without fir_number should succeed"
+    ok5 = insert_record(
+        conn,
+        entity_name="Amit Kumar",
+        source_type="news",
+        source_url="https://example.com/amit-article",
+    )
+    assert not ok5, "Re-sync without fir_number should be deduplicated (dedup_key)"
+
+    # #4: match_status is stored and returned
+    ok_link = insert_entity_link(
+        conn,
+        entity_a="Pradeep Singh",
+        entity_b="Pradeep Singh Rajput",
+        match_score=94.5,
+        match_status="needs_review",
+    )
+    assert ok_link, "Entity link insert should succeed"
+    ok_link2 = insert_entity_link(
+        conn,
+        entity_a="Rakesh Verma",
+        entity_b="Rakesh Kumar Verma",
+        match_score=96.0,
+        match_status="auto_confirmed",
+    )
+    assert ok_link2
+    links = get_entity_links(conn, "Pradeep Singh")
+    assert any(l["match_status"] == "needs_review" for l in links), "match_status needs_review returned"
+    links = get_entity_links(conn, "Rakesh Verma")
+    assert any(l["match_status"] == "auto_confirmed" for l in links), "match_status auto_confirmed returned"
+
     entities = get_all_entities(conn)
-    assert len(entities) == 1
-    assert entities[0]["record_count"] == 2
+    assert len(entities) == 2
+    counts = {e["entity_name"]: e["record_count"] for e in entities}
+    assert counts["Rakesh Kumar Verma"] == 2
+    assert counts["Amit Kumar"] == 1
 
     recs = get_entity_records(conn, "Rakesh Kumar Verma")
     assert len(recs) == 2
@@ -249,5 +386,7 @@ if __name__ == "__main__":
 
     results = search_entities(conn, "Verma")
     assert len(results) == 1
+    search_amit = search_entities(conn, "Amit")
+    assert len(search_amit) == 1
 
     print("All storage tests passed.")

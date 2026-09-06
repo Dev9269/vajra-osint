@@ -1,0 +1,22 @@
+# VAJRA — spaCy NER model (required for person/entity extraction)
+#
+# en_core_web_trf is the transformer model the app prefers: it detects full
+# names (e.g. "Rakesh Kumar Verma") that the small model truncates, and is far
+# more accurate for Indic names. It pulls in torch (large), so it is kept out
+# of requirements.txt. Install with:
+#
+#   pip install -r requirements-models.txt
+#
+# or equivalently:
+#   python -m spacy download en_core_web_trf
+#
+# en_core_web_sm is the lightweight fallback if the trf model is unavailable;
+# it is optional but recommended for low-memory environments.
+#
+# Version must match the model package, NOT the spaCy library version.
+
+# Primary (transformer) model
+en_core_web_trf @ https://github.com/explosion/spacy-models/releases/download/en_core_web_trf-3.8.0/en_core_web_trf-3.8.0-py3-none-any.whl
+
+# Lightweight fallback (optional)
+# en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl

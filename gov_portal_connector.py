@@ -3,6 +3,9 @@
 CHANGELOG 2026-09-06: rebuilt to parse structured fields (age, gender,
 crime_type, status, location, fir_number) from each portal card/detail.
 
+CHANGELOG 2026-09-06 (bugfix round, #6): fallback records now use
+record_type 'unresolved_lead' consistently (was 'person' for raw entries).
+
 Template-based — each portal has different HTML, so selectors must be
 filled in per target site after inspecting live HTML.
 
@@ -137,7 +140,7 @@ def scrape_portal(portal: dict, db_path: Optional[str] = None) -> int:
             ok = insert_record(
                 conn,
                 entity_name=entry_text[:200],
-                record_type="person",
+                record_type="unresolved_lead",
                 detail=entry_text[:500],
                 source_type="gov_portal",
                 source_url=url,
@@ -177,7 +180,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     print("Running gov portal connector test...")
     if not PORTALS:
-        print("No portals configured — add real portal selectors to PORTALS list.")
+        print("No portals configured - add real portal selectors to PORTALS list.")
         print("This module is a template; edit 'PORTALS' with real site selectors.")
     else:
         for portal in PORTALS:

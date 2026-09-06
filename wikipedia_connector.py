@@ -139,7 +139,7 @@ def sync_wikipedia(
                 ok = insert_record(
                     conn,
                     entity_name=title,
-                    record_type="person",
+                    record_type="unresolved_lead",
                     detail=extract[:2000],
                     source_type="wikipedia",
                     source_url=source_url,

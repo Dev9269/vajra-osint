@@ -5,6 +5,12 @@ summary and store the extracted PERSON as entity_name instead of storing
 the whole headline as the name. Structured fields (crime_type, status,
 location, fir_number) extracted too.
 
+CHANGELOG 2026-09-06 (bugfix round, #6): keyword list tightened — removed
+bare "police" and "crime" (matches benign headlines), keyword matching now
+uses word boundaries so short terms like "fir" no longer match "fire"/"first".
+Fallback records now use record_type 'unresolved_lead' consistently (was
+'news_headline').
+
 Stores only syndicated headlines/summaries from public RSS feeds — never
 fetches full article HTML (copyright-safe, always links to original).
 """
@@ -23,12 +29,18 @@ logger = logging.getLogger(__name__)
 
 REQUEST_DELAY = 2
 
+# Concrete crime/status words only. No bare "police"/"crime" — those match
+# benign headlines (e.g. "police community outreach"). Matching is done with
+# word boundaries (see _matches_keywords) so short terms like "fir" or "drug"
+# can't false-positive on "fire"/"first" or "druggist".
 DEFAULT_KEYWORDS = [
     "arrested", "wanted", "absconding", "fir", "chargesheet", "convicted",
-    "sentence", "fugitive", "bounty", "interpol", "encounter", "surrendered",
-    "acquitted", "bail", "custody", "police", "crime", "murder", "fraud",
-    "smuggling", "narcotics", "cybercrime", "drug", "extortion", "kidnapping",
-    "terror", "fired from", "warrant",
+    "convict", "accused", "sentence", "fugitive", "bounty", "interpol",
+    "encounter", "surrendered", "acquitted", "bail", "custody", "murder",
+    "fraud", "smuggling", "narcotics", "cybercrime", "extortion",
+    "kidnapping", "terror", "terrorist", "homicide", "robbery", "theft",
+    "rape", "human trafficking", "overdose", "money laundering",
+    "corruption", "fired from", "warrant",
 ]
 
 DEFAULT_FEEDS = [
@@ -42,7 +54,11 @@ DEFAULT_FEEDS = [
 
 def _matches_keywords(text: str, keywords: list[str]) -> bool:
     text_lower = text.lower()
-    return any(kw.lower() in text_lower for kw in keywords)
+    for kw in keywords:
+        # Word-boundary match: "fir" matches "fir 123" but not "fire"/"first".
+        if re.search(rf"\b{re.escape(kw.lower())}\b", text_lower):
+            return True
+    return False
 
 
 def _clean_html(html_text: str) -> str:
@@ -128,7 +144,7 @@ def sync_news(
                 ok = insert_record(
                     conn,
                     entity_name=title[:200],
-                    record_type="news_headline",
+                    record_type="unresolved_lead",
                     detail=detail[:500],
                     source_type="news",
                     source_url=link,
