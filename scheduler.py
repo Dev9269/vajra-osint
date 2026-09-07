@@ -17,6 +17,7 @@ from wikipedia_connector import sync_wikipedia
 from news_connector import sync_news
 from gov_portal_connector import sync_gov_portals
 from entity_resolution import resolve_entities
+from entity_extraction import report_spacy_model
 from web_search import search_case
 from fir_scraper import check_case_documents
 from cases.ingest_evidence import ingest_case_evidence, list_case_dirs
@@ -115,6 +116,9 @@ def main():
         handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("vajra_scheduler.log")],
     )
     logger.info("VAJRA Scheduler starting at %s", datetime.now(timezone.utc).isoformat())
+
+    # Startup NER model check — visible WARNING if en_core_web_trf missing.
+    report_spacy_model()
 
     run_initial_sync()
 

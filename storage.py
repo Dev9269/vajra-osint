@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS case_references (
     title TEXT NOT NULL,
     url TEXT NOT NULL,
     snippet TEXT,
+    meta TEXT,
     fetched_at TEXT NOT NULL,
     UNIQUE(source_type, url)
 );
@@ -183,6 +184,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if records_exists and "image_url" not in rcols:
         conn.execute("ALTER TABLE records ADD COLUMN image_url TEXT")
         conn.commit()
+
+    # case_references.meta: carries the sentence-scoped crime/status attribution
+    # decision for web-search references (see web_search._attribution_for_article).
+    refs_exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='case_references'"
+    ).fetchone() is not None
+    if refs_exists:
+        refcols = {r[1] for r in conn.execute("PRAGMA table_info(case_references)")}
+        if "meta" not in refcols:
+            conn.execute("ALTER TABLE case_references ADD COLUMN meta TEXT")
+            conn.commit()
 
 
 def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
@@ -389,6 +401,7 @@ def insert_case_reference(
     title: str,
     url: str,
     snippet: Optional[str] = None,
+    meta: Optional[str] = None,
     fetched_at: Optional[str] = None,
 ) -> bool:
     """Insert a case web-search reference. Returns True if inserted, False if duplicate."""
@@ -397,9 +410,9 @@ def insert_case_reference(
     try:
         conn.execute(
             """INSERT INTO case_references
-               (case_id, source_type, title, url, snippet, fetched_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (case_id, source_type, title, url, snippet, fetched_at),
+               (case_id, source_type, title, url, snippet, meta, fetched_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (case_id, source_type, title, url, snippet, meta, fetched_at),
         )
         conn.commit()
         return True
@@ -409,7 +422,7 @@ def insert_case_reference(
 
 def get_case_references(conn: sqlite3.Connection, case_id: str) -> list[dict]:
     rows = conn.execute(
-        """SELECT id, source_type, title, url, snippet, fetched_at
+        """SELECT id, source_type, title, url, snippet, meta, fetched_at
            FROM case_references
            WHERE case_id = ?
            ORDER BY fetched_at DESC""",
@@ -586,5 +599,19 @@ if __name__ == "__main__":
     refs = get_case_references(conn, "CASE-001")
     assert len(refs) == 1
     assert refs[0]["source_type"] == "google_news"
+
+    ok_ref2 = insert_case_reference(
+        conn,
+        case_id="CASE-001",
+        source_type="google_news",
+        title="Attributed article",
+        url="https://example.com/article2",
+        snippet="Arrested for fraud...",
+        meta='{"crime_type": "fraud", "status": "arrested"}',
+    )
+    assert ok_ref2, "Reference with meta should insert"
+    refs2 = get_case_references(conn, "CASE-001")
+    assert len(refs2) == 2
+    assert refs2[-1]["meta"] == '{"crime_type": "fraud", "status": "arrested"}'
 
     print("All storage tests passed.")

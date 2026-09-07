@@ -67,16 +67,23 @@ Pairwise fuzzy matching via rapidfuzz and the stored decision is persistent:
 
 ## Setup
 
+> **MANDATORY**: the spaCy transformer model (`en_core_web_trf`) must be
+> installed or entity extraction silently degrades — name truncation and missed
+> detections with **no error and only a startup WARNING**. Install it FIRST:
+
 ```bash
-pip install -r requirements.txt
-pip install -r requirements-models.txt    # pulls en_core_web_trf (transformers NER)
+pip install -r requirements-models.txt    # REQUIRED — en_core_web_trf (transformers NER), a large download
 # or: python -m spacy download en_core_web_trf
+
+pip install -r requirements.txt           # base app dependencies
 # optional lightweight fallback: uncomment en_core_web_sm in requirements-models.txt
 ```
 
-The transformer model is preferred (`_get_nlp()` auto-detects it) and fixes
-name truncation (e.g. `en_core_web_sm` labeled "Rakesh Kumar Verma" as
-"Kumar Verma") — a real accuracy difference for Indic names.
+The transformer model is preferred (`_get_nlp()` auto-detects it, and
+`report_spacy_model()` logs a visible WARNING at scheduler/API startup if the
+pipeline will fall back to `en_core_web_sm`). It fixes name truncation (e.g.
+`en_core_web_sm` labeled "Rakesh Kumar Verma" as "Kumar Verma") — a real
+accuracy difference for Indic names.
 
 ## Running
 

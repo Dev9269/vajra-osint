@@ -187,6 +187,46 @@ def _get_nlp():
     return _nlp
 
 
+def report_spacy_model() -> str:
+    """Log which spaCy model is available at startup.
+
+    VISIBLE WARNING (not just INFO) when the pipeline will fall back to
+    en_core_web_sm: en_core_web_trf fixes name truncation and missed
+    detections, so running without it silently lowers output quality.
+    Returns the model name that loaded (or the fallback that will load).
+    """
+    import spacy.util
+
+    try:
+        installed = spacy.util.get_installed_models()
+    except Exception:  # pragma: no cover - never fail startup on this
+        installed = []
+
+    loaded = "en_core_web_trf" if "en_core_web_trf" in installed else None
+    if loaded:
+        logger.info(
+            "spaCy model available: en_core_web_trf (name-accurate NER). "
+            "Installed: %s", sorted(installed),
+        )
+        return loaded
+
+    if "en_core_web_sm" in installed:
+        logger.warning(
+            "spaCy model en_core_web_trf NOT installed - falling back to "
+            "en_core_web_sm. Names may be truncated and detections skipped. "
+            "Fix: pip install -r requirements-models.txt (installed: %s)",
+            sorted(installed),
+        )
+        return "en_core_web_sm"
+
+    logger.warning(
+        "NO spaCy model installed - entity extraction will fail at first use. "
+        "Fix: pip install -r requirements-models.txt (installed: %s)",
+        sorted(installed),
+    )
+    return "none"
+
+
 # ── Extraction functions ────────────────────────────────────────────────────
 
 def _extract_age(text: str) -> Optional[int]:

@@ -36,6 +36,7 @@ from storage import (
     search_by_crime,
     search_entities,
 )
+from entity_extraction import report_spacy_model
 
 logger = logging.getLogger(__name__)
 
@@ -191,5 +192,7 @@ def by_crime(crime_type: str, _key: str = Depends(verify_api_key)):
 if __name__ == "__main__":
     import uvicorn
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    # Startup NER model check — visible WARNING if en_core_web_trf missing.
+    report_spacy_model()
     print("Starting VAJRA API at http://localhost:8000 (docs: /docs)")
     uvicorn.run(app, host="0.0.0.0", port=8000)
