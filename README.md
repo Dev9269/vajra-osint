@@ -121,8 +121,9 @@ curl -H "X-API-Key: your-secret-key" http://localhost:8000/entities
 
 Endpoints:
 - `GET /entities` — list entities
-- `GET /entities/<name>` — records with structured fields + citations
+- `GET /entities/<name>` — records with structured fields + citations, plus `related_cases`, `evidence`, `references` (photos/videos/FIR links, auto web research)
 - `GET /entities/<name>/links` — matched entities with `match_status`
+- `GET /cases/<case_id>` — case dossier: evidence + references
 - `GET /search?q=<query>` — partial name search
 - `GET /by-status/<status>` — filter by wanted/convicted/etc.
 - `GET /by-crime/<crime>` — filter by crime type
@@ -156,6 +157,50 @@ python cases/ingest_cases.py --cases CASE-002
 python api.py                          # then query /entities, /search?q=...
 ```
 
+### Case evidence, FIR copies, photos & videos (`2026-09-07`)
+
+Each case ships an `evidence/evidence_metadata/media_manifest.json`
+(`CASE-001-all-evidence-one-folder.zip`, `CASE-002-all-evidence-one-folder.zip`)
+that is ingested link-only into the `case_evidence` table:
+
+```powershell
+python cases/ingest_evidence.py      # loads CASE-001 + CASE-002 manifests
+```
+
+Evidence items cover official documents (including the **actual NIA FIR PDF**
+`RC-26/2021/NIA/DLI`), court judgments, gov press releases, photo references
+(CCTV stills police release inside articles) and video references (news/YouTube
+coverage). Links only — media is **never downloaded or stored**, and private
+victim/bank/phone details are excluded.
+
+**FIR availability check** (`fir_scraper.py`) verifies each official-document
+URL is live (HTTP 200 + `application/pdf`) and records `available` status +
+first-page text attribution — without saving the document:
+
+```powershell
+python fir_scraper.py               # checks CASE-001 + CASE-002 official docs
+```
+
+**Automatic case research** (`web_search.py`) — the legal "Google the case"
+step. Uses Google News RSS + Wikipedia's search API (never scrapes
+google.com; RSS/API only) and stores matched articles in `case_references`:
+
+```powershell
+python web_search.py                # self-test for CASE-001
+```
+
+The **scheduler** now re-runs all of this daily at 05:30 IST
+(`job_case_research`).
+
+### Dossier endpoints
+
+- `GET /entities/<name>` — now includes `related_cases`, `evidence`
+  (photos/videos/FIR-official-doc links) and `references` (auto web research)
+  right next to the person's records. **Photos/videos/FIR links show in the
+  same entity view via `image_url` + evidence — nothing opens elsewhere.**
+- `GET /cases/<case_id>` — full case dossier: all evidence + web references.
+- `GET /entities/<name>/links` — matched entities with `match_status`.
+
 ## Adding a Government Portal
 
 1. Inspect the live HTML at the portal URL
@@ -169,7 +214,8 @@ python api.py                          # then query /entities, /search?q=...
 - **No fabrication**: never infers DOB/address/etc. not in the source. Missing fields stay `null`. Person names only stored when NER finds an explicit name. No crime attribution to anyone who merely *reports* or speaks about a crime.
 - **Citation required**: every record has `source_url`, `source_type`, `fetched_at`.
 - **Scraping etiquette**: robots.txt check, 4s rate limiting with automatic retry/backoff on 429 (Wikipedia), descriptive User-Agent.
-- **Copyright**: headlines/short summaries only, always link to original.
+- **Copyright**: headlines/short summaries only, always link to original. Case evidence is **link-only** — FIR/CCTV/video/media URLs are stored and attributed, never downloaded or re-hosted; private victim data (bank/phone/address) is excluded.
+- **No Google scraping**: automatic case research uses Google News RSS + Wikipedia search API only (never automated `google.com` results). Official FIR lookup links are constructed for eCourts/FIR-status portals; private/login FIR portals are capability-checked without bypass attempts (login/OTP/CAPTCHA never automated).
 - **Entity resolution**: subset/ambiguous matches stored as `needs_review`, never auto-merged (max one-way auto-merge for near-identical names only).
 - **Access control**: API is key-protected; not suitable for public exposure without further rate limiting + HTTPS.
 

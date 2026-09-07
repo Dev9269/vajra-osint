@@ -27,6 +27,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from storage import (
     get_all_entities,
+    get_case_evidence,
+    get_case_references,
     get_connection,
     get_entity_links,
     get_entity_records,
@@ -74,6 +76,13 @@ def health():
     return {"status": "ok", "service": "vajra-osint-api"}
 
 
+def _case_id_from_source(source_type: str) -> str | None:
+    """'case_CASE-001' -> 'CASE-001'; None for non-case sources."""
+    if source_type and source_type.startswith("case_"):
+        return source_type[len("case_"):]
+    return None
+
+
 @app.get("/entities")
 def list_entities(limit: int = Query(100, ge=1, le=1000), _key: str = Depends(verify_api_key)):
     conn = get_connection()
@@ -91,10 +100,43 @@ def get_entity(name: str, _key: str = Depends(verify_api_key)):
         records = get_entity_records(conn, name)
         if not records:
             raise HTTPException(status_code=404, detail=f"Entity '{name}' not found")
+
+        evidence: list[dict] = []
+        references: list[dict] = []
+        related_cases: list[str] = []
+        for rec in records:
+            case_id = _case_id_from_source(rec.get("source_type"))
+            if case_id and case_id not in related_cases:
+                related_cases.append(case_id)
+
+        for case_id in related_cases:
+            evidence.extend(get_case_evidence(conn, case_id))
+            references.extend(get_case_references(conn, case_id))
+
         return {
             "entity_name": name,
             "record_count": len(records),
             "records": records,
+            "related_cases": related_cases,
+            "evidence": evidence,
+            "references": references,
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/cases/{case_id}")
+def get_case(case_id: str, _key: str = Depends(verify_api_key)):
+    conn = get_connection()
+    try:
+        evidence = get_case_evidence(conn, case_id)
+        references = get_case_references(conn, case_id)
+        if not evidence and not references:
+            raise HTTPException(status_code=404, detail=f"Case '{case_id}' not found in API")
+        return {
+            "case_id": case_id,
+            "evidence": evidence,
+            "references": references,
         }
     finally:
         conn.close()

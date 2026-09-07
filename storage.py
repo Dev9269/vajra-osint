@@ -55,6 +55,37 @@ CREATE TABLE IF NOT EXISTS entity_links (
     UNIQUE(entity_a, entity_b)
 );
 
+CREATE TABLE IF NOT EXISTS case_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id TEXT NOT NULL,
+    evidence_id TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    subtype TEXT,
+    title TEXT,
+    url TEXT NOT NULL,
+    source TEXT,
+    date TEXT,
+    status TEXT,
+    available INTEGER NOT NULL DEFAULT 0,
+    meta TEXT,
+    fetched_at TEXT NOT NULL,
+    UNIQUE(case_id, evidence_id)
+);
+
+CREATE TABLE IF NOT EXISTS case_references (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    url TEXT NOT NULL,
+    snippet TEXT,
+    fetched_at TEXT NOT NULL,
+    UNIQUE(source_type, url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_case_evidence_case ON case_evidence(case_id);
+CREATE INDEX IF NOT EXISTS idx_case_references_case ON case_references(case_id);
+
 CREATE INDEX IF NOT EXISTS idx_records_entity ON records(entity_name);
 CREATE INDEX IF NOT EXISTS idx_records_source ON records(source_type);
 CREATE INDEX IF NOT EXISTS idx_records_status ON records(status);
@@ -294,6 +325,99 @@ def get_distinct_entity_names(conn: sqlite3.Connection) -> list[str]:
     return [r["entity_name"] for r in rows]
 
 
+def insert_case_evidence(
+    conn: sqlite3.Connection,
+    *,
+    case_id: str,
+    evidence_id: str,
+    media_type: str,
+    url: str,
+    title: Optional[str] = None,
+    subtype: Optional[str] = None,
+    source: Optional[str] = None,
+    date: Optional[str] = None,
+    status: Optional[str] = None,
+    available: int = 0,
+    meta: Optional[str] = None,
+    fetched_at: Optional[str] = None,
+) -> bool:
+    """Insert a case evidence/link item. Returns True if inserted, False if duplicate."""
+    if fetched_at is None:
+        fetched_at = datetime.now(timezone.utc).isoformat()
+    try:
+        conn.execute(
+            """INSERT INTO case_evidence
+               (case_id, evidence_id, media_type, subtype, title, url, source,
+                date, status, available, meta, fetched_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (case_id, evidence_id, media_type, subtype, title, url, source,
+             date, status, available, meta, fetched_at),
+        )
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+
+def get_case_evidence(conn: sqlite3.Connection, case_id: str) -> list[dict]:
+    rows = conn.execute(
+        """SELECT evidence_id, media_type, subtype, title, url, source, date,
+                  status, available, meta
+           FROM case_evidence
+           WHERE case_id = ?
+           ORDER BY media_type, evidence_id""",
+        (case_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_all_evidence(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute(
+        """SELECT case_id, evidence_id, media_type, subtype, title, url, source,
+                  date, status, available
+           FROM case_evidence
+           ORDER BY case_id, media_type, evidence_id"""
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def insert_case_reference(
+    conn: sqlite3.Connection,
+    *,
+    case_id: str,
+    source_type: str,
+    title: str,
+    url: str,
+    snippet: Optional[str] = None,
+    fetched_at: Optional[str] = None,
+) -> bool:
+    """Insert a case web-search reference. Returns True if inserted, False if duplicate."""
+    if fetched_at is None:
+        fetched_at = datetime.now(timezone.utc).isoformat()
+    try:
+        conn.execute(
+            """INSERT INTO case_references
+               (case_id, source_type, title, url, snippet, fetched_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (case_id, source_type, title, url, snippet, fetched_at),
+        )
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+
+def get_case_references(conn: sqlite3.Connection, case_id: str) -> list[dict]:
+    rows = conn.execute(
+        """SELECT id, source_type, title, url, snippet, fetched_at
+           FROM case_references
+           WHERE case_id = ?
+           ORDER BY fetched_at DESC""",
+        (case_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def search_by_status(conn: sqlite3.Connection, status: str) -> list[dict]:
     rows = conn.execute(
         """SELECT entity_name, crime_type, status, location, source_url, image_url
@@ -407,5 +531,60 @@ if __name__ == "__main__":
     assert len(results) == 1
     search_amit = search_entities(conn, "Amit")
     assert len(search_amit) == 1
+
+    # Case evidence + references round-trip
+    ok_ev = insert_case_evidence(
+        conn,
+        case_id="CASE-001",
+        evidence_id="FIR001",
+        media_type="official_document",
+        subtype="FIR",
+        title="FIR copy",
+        url="https://example.com/fir.pdf",
+        source="Police",
+        status="official_source",
+        available=1,
+    )
+    assert ok_ev, "First case evidence insert should succeed"
+    assert not insert_case_evidence(
+        conn,
+        case_id="CASE-001",
+        evidence_id="FIR001",
+        media_type="official_document",
+        url="https://example.com/fir.pdf",
+    ), "Duplicate case evidence should fail (case_id+evidence_id)"
+    ok_ev2 = insert_case_evidence(
+        conn,
+        case_id="CASE-001",
+        evidence_id="VID001",
+        media_type="video_reference",
+        title="News video",
+        url="https://example.com/video",
+        status="media_reference",
+    )
+    assert ok_ev2
+    ev = get_case_evidence(conn, "CASE-001")
+    assert len(ev) == 2
+    assert any(e["media_type"] == "official_document" and e["subtype"] == "FIR" for e in ev)
+
+    ok_ref = insert_case_reference(
+        conn,
+        case_id="CASE-001",
+        source_type="google_news",
+        title="Loan app case",
+        url="https://example.com/article",
+        snippet="ED arrests...",
+    )
+    assert ok_ref, "First case reference insert should succeed"
+    assert not insert_case_reference(
+        conn,
+        case_id="CASE-001",
+        source_type="google_news",
+        title="Loan app case",
+        url="https://example.com/article",
+    ), "Duplicate case reference should fail (source_type+url)"
+    refs = get_case_references(conn, "CASE-001")
+    assert len(refs) == 1
+    assert refs[0]["source_type"] == "google_news"
 
     print("All storage tests passed.")
