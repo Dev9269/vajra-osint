@@ -85,6 +85,32 @@ pipeline will fall back to `en_core_web_sm`). It fixes name truncation (e.g.
 `en_core_web_sm` labeled "Rakesh Kumar Verma" as "Kumar Verma") — a real
 accuracy difference for Indic names.
 
+## Before first run: set a permanent API key
+
+The API rejects requests without a valid `X-API-Key` header (only `/health` is
+open). The key is **permanent** — set it once, and it never changes across
+restarts, redeploys, or crash-recovery:
+
+```bash
+python generate_api_key.py          # prints a fresh 43-char key
+# copy the output into a .env file (copied from .env.example) as:
+#   VAJRA_API_KEY=<the-generated-key>
+```
+
+1. `copy .env.example .env` (PowerShell: `Copy-Item .env.example .env`)
+2. `python generate_api_key.py` → copy the printed value into `.env` as `VAJRA_API_KEY`
+3. Start any process (`python api.py`, `python scheduler.py`) from the repo root —
+   it auto-loads `.env`. Or set the variable in your shell.
+
+This key is what the dashboard/client sends as the `X-API-Key` header. It will
+**not** change unless you edit `.env` yourself.
+
+> **Safety**: `.env` is gitignored and never committed. Only `.env.example`
+> (placeholders) is in the repo — never put a real key in it.
+> **Production**: set `VAJRA_ENV=production` in `.env`. If `VAJRA_API_KEY` is
+> then missing, `api.py` refuses to start rather than generating a throwaway
+> key that would rotate on every restart.
+
 ## Running
 
 ### Individual connectors (self-tests)
@@ -110,14 +136,18 @@ Initial sync on startup, then news every 4h, Wikipedia daily @02:00, gov daily
 ### API server (`#7` — auth + CORS)
 
 ```bash
-set VAJRA_API_KEY=your-secret-key        # PowerShell; required by clients
-python api.py
+python api.py        # reads VAJRA_API_KEY from .env (see "Before first run")
 # docs at http://localhost:8000/docs
 ```
 
 - All data endpoints require the `X-API-Key` header. Missing/invalid → `401`.
   `/health` is open for load balancers.
-- Without `VAJRA_API_KEY` set, a random key is generated and printed at startup.
+- The key comes from `VAJRA_API_KEY` in `.env` (auto-loaded) or the real
+  environment. With no key set, a **temporary** random key is generated and a
+  prominent warning is printed — it changes on every restart, so this is only
+  for five-minute local tests.
+- With `VAJRA_ENV=production` and no `VAJRA_API_KEY`, the server **refuses to
+  start** instead of using a throwaway key.
 - CORS is locked to `http://localhost:3000,http://localhost:8080` by default;
   override with `VAJRA_CORS_ORIGINS` (comma-separated). `allow_credentials` is
   off. No wildcard origins.
@@ -158,8 +188,7 @@ preserving `status` and provenance (`needs_review`; court/adjudicated facts are
 not converted into convictions):
 
 ```powershell
-set VAJRA_API_KEY=your-secret-key
-python cases/ingest_cases.py          # both cases
+python cases/ingest_cases.py          # both cases; writes to the local DB directly
 python cases/ingest_cases.py --cases CASE-002
 python api.py                          # then query /entities, /search?q=...
 ```

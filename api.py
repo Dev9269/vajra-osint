@@ -21,6 +21,7 @@ CHANGELOG 2026-09-06 (bugfix round, #7):
 import logging
 import os
 import secrets
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,11 +41,64 @@ from entity_extraction import report_spacy_model
 
 logger = logging.getLogger(__name__)
 
+
+# ── .env loading ────────────────────────────────────────────────────────────
+# Dependency-free loader: reads KEY=VALUE lines from a .env file next to this
+# module into os.environ ONLY for keys that aren't already set (a real
+# exported env var always wins). Lines starting with '#' are comments.
+def _load_dotenv(path: Path) -> None:
+    if not path.is_file():
+        return
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key, value = key.strip(), value.strip().strip('"').strip("'")
+            if key:
+                os.environ.setdefault(key, value)
+    except OSError:
+        logger.warning("Could not read .env file at %s", path)
+
+
+_load_dotenv(Path(__file__).resolve().parent / ".env")
+
 # ── API key ─────────────────────────────────────────────────────────────────
-API_KEY = os.environ.get("VAJRA_API_KEY") or secrets.token_urlsafe(32)
-if not os.environ.get("VAJRA_API_KEY"):
-    print(f"[VAJRA] VAJRA_API_KEY not set — generated ephemeral key for this run: {API_KEY}")
-    print("        Set VAJRA_API_KEY environment variable for a stable key.")
+VAJRA_API_KEY = os.environ.get("VAJRA_API_KEY")
+VAJRA_ENV = (os.environ.get("VAJRA_ENV") or "development").strip().lower()
+
+
+def _ephemeral_key_warning(key: str) -> None:
+    """Print a visible banner when running with a throwaway key."""
+    line = "=" * 60
+    print(line)
+    print(" WARNING: VAJRA_API_KEY is not set.")
+    print(" Using a TEMPORARY key that will change on every restart:")
+    print(f"   {key}")
+    print(" This will break any dashboard/client using a saved key.")
+    print(" Set VAJRA_API_KEY in your .env for a permanent key.")
+    print("   Generate one:   python generate_api_key.py")
+    print(line)
+
+
+if VAJRA_API_KEY:
+    API_KEY = VAJRA_API_KEY
+    print(f"[VAJRA] Using VAJRA_API_KEY from environment/.env (permanent).")
+elif VAJRA_ENV == "production":
+    print("\n" + "=" * 60)
+    print(" REFUSING TO START: VAJRA_ENV=production but VAJRA_API_KEY is not set.")
+    print(" Generating a throwaway key in production would rotate it on every")
+    print(" restart and strand every dashboard/client using a saved key.")
+    print(" Fix: python generate_api_key.py, then put the value in .env as")
+    print("      VAJRA_API_KEY=<key> and restart.")
+    print("=" * 60)
+    raise SystemExit("VAJRA_API_KEY is required when VAJRA_ENV=production")
+else:
+    API_KEY = secrets.token_urlsafe(32)
+    # Deliberately before logging.basicConfig (module import time) so the
+    # warning cannot be swallowed by a quiet log config.
+    _ephemeral_key_warning(API_KEY)
 
 
 def verify_api_key(x_api_key: str = Header(None)):
