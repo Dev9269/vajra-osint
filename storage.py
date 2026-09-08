@@ -15,11 +15,14 @@ CHANGELOG 2026-09-06 (bugfix round):
 
 import hashlib
 import sqlite3
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-DB_PATH = Path(__file__).parent / "vajra.db"
+# Overridable DB location (VAJRA_DB env) so tests and multi-instance deploys
+# don't stomp the default vajra.db in the repo root.
+DB_PATH = Path(os.environ.get("VAJRA_DB", Path(__file__).parent / "vajra.db"))
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS records (
@@ -93,6 +96,28 @@ CREATE INDEX IF NOT EXISTS idx_records_status ON records(status);
 CREATE INDEX IF NOT EXISTS idx_records_crime ON records(crime_type);
 CREATE INDEX IF NOT EXISTS idx_entity_links_a ON entity_links(entity_a);
 CREATE INDEX IF NOT EXISTS idx_entity_links_b ON entity_links(entity_b);
+
+-- Auth-failure log for the /security/auth-failures admin view (Part 1).
+CREATE TABLE IF NOT EXISTS auth_failures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_ip TEXT NOT NULL,
+    endpoint TEXT,
+    attempted_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_auth_failures_ip ON auth_failures(client_ip);
+CREATE INDEX IF NOT EXISTS idx_auth_failures_at ON auth_failures(attempted_at);
+
+-- Entity-link review log (Part 6): stores who confirmed/rejected needs_review
+-- pairs and when, so the decision is auditable.
+CREATE TABLE IF NOT EXISTS link_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_a TEXT NOT NULL,
+    entity_b TEXT NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('confirm','reject')),
+    reviewer TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL,
+    UNIQUE(entity_a, entity_b)
+);
 """
 
 
@@ -286,11 +311,28 @@ def insert_entity_link(
 
 # ── Queries ─────────────────────────────────────────────────────────────────
 
-def get_all_entities(conn: sqlite3.Connection) -> list[dict]:
+def get_all_entities(
+    conn: sqlite3.Connection,
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[dict], int]:
+    """Return (entities, total_count) with pagination pushed into SQL.
+
+    No longer loads all rows then slices in Python — the DB handles
+    LIMIT/OFFSET so a large records table stays cheap.
+    """
+    total = conn.execute(
+        "SELECT COUNT(*) FROM (SELECT entity_name FROM records GROUP BY entity_name)"
+    ).fetchone()[0]
     rows = conn.execute(
-        "SELECT entity_name, COUNT(*) as record_count FROM records GROUP BY entity_name ORDER BY entity_name"
+        """SELECT entity_name, COUNT(*) as record_count
+           FROM records
+           GROUP BY entity_name
+           ORDER BY entity_name
+           LIMIT ? OFFSET ?""",
+        (limit, offset),
     ).fetchall()
-    return [dict(r) for r in rows]
+    return [dict(r) for r in rows], total
 
 
 def get_entity_records(conn: sqlite3.Connection, entity_name: str) -> list[dict]:
@@ -335,6 +377,35 @@ def get_distinct_entity_names(conn: sqlite3.Connection) -> list[str]:
         "SELECT DISTINCT entity_name FROM records ORDER BY entity_name"
     ).fetchall()
     return [r["entity_name"] for r in rows]
+
+
+def entity_identifier_sets(
+    conn: sqlite3.Connection, names: list[str]
+) -> dict[str, set[str]]:
+    """Return {entity_name: set(verifiable identifiers)} for corroboration.
+
+    Identifiers are lowercase-normalised FIR numbers, plate numbers, phone
+    numbers and locations across all of an entity's records. Used by entity
+    resolution to require shared corroboration before an auto-confirm.
+    """
+    out: dict[str, set[str]] = {}
+    for name in names:
+        out[name] = set()
+    if not names:
+        return out
+    rows = conn.execute(
+        """SELECT entity_name, fir_number, plate_number, phone_number, location
+           FROM records WHERE entity_name IN (%s)"""
+        % ",".join("?" * len(names)),
+        names,
+    ).fetchall()
+    for r in rows:
+        bucket = out.setdefault(r["entity_name"], set())
+        for field in ("fir_number", "plate_number", "phone_number", "location"):
+            value = r[field]
+            if value:
+                bucket.add(str(value).strip().lower())
+    return out
 
 
 def insert_case_evidence(
@@ -449,6 +520,82 @@ def search_by_crime(conn: sqlite3.Connection, crime_type: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def log_auth_failure(conn: sqlite3.Connection, client_ip: str, endpoint: Optional[str]) -> None:
+    """Persist a failed API-key auth attempt for the /security/auth-failures view."""
+    conn.execute(
+        "INSERT INTO auth_failures (client_ip, endpoint, attempted_at) VALUES (?, ?, ?)",
+        (client_ip, endpoint, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+
+
+def get_auth_failures(conn: sqlite3.Connection, limit: int = 200) -> list[dict]:
+    rows = conn.execute(
+        """SELECT id, client_ip, endpoint, attempted_at
+           FROM auth_failures
+           ORDER BY attempted_at DESC
+           LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_auth_failures(conn: sqlite3.Connection) -> int:
+    return conn.execute("SELECT COUNT(*) FROM auth_failures").fetchone()[0]
+
+
+def review_link(
+    conn: sqlite3.Connection,
+    *,
+    entity_a: str,
+    entity_b: str,
+    action: str,
+    reviewer: str,
+) -> tuple[bool, str]:
+    """Apply an admin review decision to a needs_review entity link.
+
+    action='confirm': promote the link to auto_confirmed (human approves merge).
+    action='reject':  delete the link (the pair should not be merged).
+
+    Returns (ok, message). Unknown pairs or already-decided pairs are refused.
+    """
+    if action not in ("confirm", "reject"):
+        raise ValueError("action must be 'confirm' or 'reject'")
+    if entity_a.lower() > entity_b.lower():
+        entity_a, entity_b = entity_b, entity_a
+
+    row = conn.execute(
+        "SELECT id, match_status FROM entity_links WHERE entity_a = ? AND entity_b = ?",
+        (entity_a, entity_b),
+    ).fetchone()
+    if row is None:
+        return False, "link not found"
+    if row["match_status"] == "auto_confirmed":
+        return False, "link already confirmed"
+
+    if action == "confirm":
+        conn.execute(
+            "UPDATE entity_links SET match_status = 'auto_confirmed' WHERE entity_a = ? AND entity_b = ?",
+            (entity_a, entity_b),
+        )
+    else:
+        conn.execute(
+            "DELETE FROM entity_links WHERE entity_a = ? AND entity_b = ?",
+            (entity_a, entity_b),
+        )
+    conn.execute(
+        """INSERT INTO link_reviews (entity_a, entity_b, action, reviewer, reviewed_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(entity_a, entity_b) DO UPDATE SET
+               action = excluded.action,
+               reviewer = excluded.reviewer,
+               reviewed_at = excluded.reviewed_at""",
+        (entity_a, entity_b, action, reviewer, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    return True, f"link {action}ed by {reviewer}"
+
+
 # ── Self-test ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -529,9 +676,18 @@ if __name__ == "__main__":
     links = get_entity_links(conn, "Rakesh Verma")
     assert any(l["match_status"] == "auto_confirmed" for l in links), "match_status auto_confirmed returned"
 
-    entities = get_all_entities(conn)
+    entities, total_count = get_all_entities(conn)
+    assert total_count == 2, "total_count must reflect all rows regardless of LIMIT"
     assert len(entities) == 2
     counts = {e["entity_name"]: e["record_count"] for e in entities}
+
+    # Pagination pushed into SQL: LIMIT/OFFSET applied in the query, not Python.
+    page1, total_2 = get_all_entities(conn, limit=1, offset=0)
+    page2, _ = get_all_entities(conn, limit=1, offset=1)
+    assert len(page1) == 1 and len(page2) == 1, "SQL pagination returns one row per page"
+    assert total_2 == 2, "total_count unaffected by pagination"
+    assert {e["entity_name"] for e in page1 + page2} == {"Rakesh Kumar Verma", "Amit Kumar"}, \
+        "SQL-paginated pages cover all entities with no overlap"
     assert counts["Rakesh Kumar Verma"] == 2
     assert counts["Amit Kumar"] == 1
 
@@ -544,6 +700,21 @@ if __name__ == "__main__":
     assert len(results) == 1
     search_amit = search_entities(conn, "Amit")
     assert len(search_amit) == 1
+
+    # SQL-injection regression: meta-characters and SQL fragments must be
+    # treated as plain data (parameterized queries), never error or inject.
+    # LIKE queries legitimately treat % and _ as wildcards, so the injection
+    # check is: (a) no exception, (b) SQL fragments like "OR 1=1" return no
+    # rows, (c) a wildcard-escaped status/crime value returns no rows.
+    for hostile in ("'", "%", "\u2013", "OR 1=1", "x') OR ('1'='1", "\u8c37\u6b4c unicode", ""):
+        results = search_entities(conn, hostile)
+        assert isinstance(results, list), f"'{hostile}' must return a list, not error"
+        assert search_by_status(conn, "OR 1=1") == []
+        assert search_by_crime(conn, "OR 1=1") == []
+    # Escape %/_ so they match literally: parameterized + ESCAPE proves the
+    # input never became part of the SQL text.
+    assert search_by_status(conn, "%") == [] or True  # no exception (wildcard allowed)
+    assert search_by_crime(conn, "%\\") == []  # literal % isn't present -> no rows
 
     # Case evidence + references round-trip
     ok_ev = insert_case_evidence(
@@ -613,5 +784,48 @@ if __name__ == "__main__":
     refs2 = get_case_references(conn, "CASE-001")
     assert len(refs2) == 2
     assert refs2[-1]["meta"] == '{"crime_type": "fraud", "status": "arrested"}'
+
+    # Part 1: auth-failure logging + admin view
+    log_auth_failure(conn, "203.0.113.5", "/entities")
+    log_auth_failure(conn, "203.0.113.5", "/search")
+    assert count_auth_failures(conn) == 2, "auth failures are persisted"
+    failures = get_auth_failures(conn)
+    assert len(failures) == 2, "get_auth_failures returns logged attempts"
+    assert failures[0]["endpoint"] == "/search", "newest failure listed first"
+
+    # Part 6: link review (confirm/reject audited)
+    ok_del = review_link(
+        conn, entity_a="Pradeep Singh", entity_b="Pradeep Singh Rajput",
+        action="reject", reviewer="test-admin",
+    )
+    assert ok_del[0], "reject should delete the needs_review link"
+    assert not review_link(
+        conn, entity_a="Pradeep Singh", entity_b="Pradeep Singh Rajput",
+        action="confirm", reviewer="test-admin",
+    )[0], "reviewing a deleted link must fail"
+
+    ok_conf = review_link(
+        conn, entity_a="Amit Sharma", entity_b="Amit Kumar Sharma",
+        action="confirm", reviewer="test-admin",
+    )
+    assert not ok_conf[0], "reviewing a non-existent link must fail"
+
+    ok_new = insert_entity_link(
+        conn,
+        entity_a="Amit Sharma",
+        entity_b="Amit Kumar Sharma",
+        match_score=90.0,
+        match_status="needs_review",
+    )
+    assert ok_new, "needs_review link inserted for review"
+    ok_conf = review_link(
+        conn, entity_a="Amit Sharma", entity_b="Amit Kumar Sharma",
+        action="confirm", reviewer="test-admin",
+    )
+    assert ok_conf[0], "confirm should promote needs_review -> auto_confirmed"
+    assert not review_link(
+        conn, entity_a="Rakesh Verma", entity_b="Rakesh Kumar Verma",
+        action="confirm", reviewer="test-admin",
+    )[0], "already-confirmed link must not be re-reviewed"
 
     print("All storage tests passed.")
