@@ -1,10 +1,15 @@
 # VAJRA Layer 3 — OSINT Aggregator
 # Python 3.11+
+#
+# Core runtime deps. The spaCy model (en_core_web_trf) and torch are in
+# requirements-models.txt — they are large and installed separately.
 
 # Scraping & parsing
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 feedparser>=6.0.0
+trafilatura>=1.8.0
+httpx>=0.27.0
 
 # NER
 spacy>=3.7.0
@@ -18,3 +23,17 @@ apscheduler>=3.10.0
 # API
 fastapi>=0.104.0
 uvicorn>=0.24.0
+slowapi>=0.1.9
+
+# Date parsing for news/portal articles (robust to Indian date formats)
+dateparser>=1.2.0
+
+# Dev / test
+pytest>=8.0.0
+pytest-cov>=5.0.0
+requests-mock>=1.11.0
+
+# gitleaks (secret scanning) is a Go binary installed separately:
+#   install:  scoop install gitleaks   |   brew install gitleaks
+#   or via golang:  go install github.com/gitleaks/gitleaks/v8@latest
+# Run:   gitleaks git --pre-commit
