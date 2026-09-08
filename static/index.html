@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAJRA OSINT Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #0f1117; color: #e1e4e8; line-height: 1.5; }
+  .topbar { background: #161b22; border-bottom: 1px solid #30363d; padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+  .topbar h1 { font-size: 18px; color: #58a6ff; }
+  .topbar .status { font-size: 13px; color: #8b949e; margin-left: auto; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid #30363d; padding-bottom: 0; }
+  .tab { padding: 10px 20px; cursor: pointer; background: none; border: none; color: #8b949e; font-size: 14px; border-bottom: 2px solid transparent; transition: all 0.15s; }
+  .tab:hover { color: #c9d1d9; }
+  .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .search-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+  .search-bar input { flex: 1; padding: 8px 14px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 14px; outline: none; }
+  .search-bar input:focus { border-color: #58a6ff; }
+  .search-bar button { padding: 8px 18px; background: #238636; border: none; border-radius: 6px; color: #fff; cursor: pointer; font-size: 14px; }
+  .search-bar button:hover { background: #2ea043; }
+  .table { width: 100%; border-collapse: collapse; }
+  .table th { text-align: left; padding: 10px 12px; background: #161b22; color: #8b949e; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #30363d; }
+  .table td { padding: 10px 12px; border-bottom: 1px solid #21262d; font-size: 13px; }
+  .table tr:hover { background: #161b22; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge.auto { background: #1f6feb22; color: #58a6ff; }
+  .badge.review { background: #9e6a0322; color: #d29922; }
+  .badge.confirmed { background: #23863622; color: #3fb950; }
+  .review-actions { display: flex; gap: 6px; }
+  .btn { padding: 4px 12px; border-radius: 4px; border: 1px solid; cursor: pointer; font-size: 12px; font-weight: 600; }
+  .btn-confirm { background: #23863622; border-color: #238636; color: #3fb950; }
+  .btn-confirm:hover { background: #23863644; }
+  .btn-reject { background: #da363322; border-color: #da3633; color: #f85149; }
+  .btn-reject:hover { background: #da363344; }
+  .empty { color: #8b949e; text-align: center; padding: 40px; font-size: 14px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .stat-card .label { font-size: 12px; color: #8b949e; text-transform: uppercase; }
+  .stat-card .value { font-size: 28px; font-weight: 700; color: #c9d1d9; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>VAJRA OSINT Dashboard</h1>
+  <span class="status">Connected &middot; 127.0.0.1</span>
+</div>
+<div class="container">
+  <div class="tabs">
+    <button class="tab active" data-panel="records">Records</button>
+    <button class="tab" data-panel="review">Needs Review</button>
+    <button class="tab" data-panel="links">Links</button>
+  </div>
+
+  <!-- Records panel -->
+  <div class="panel active" id="records">
+    <div class="search-bar">
+      <input type="text" id="records-q" placeholder="Search entities (name, FIR, plate, phone)..." />
+      <button onclick="searchRecords()">Search</button>
+    </div>
+    <div class="stats" id="records-stats"></div>
+    <table class="table" id="records-table">
+      <thead><tr><th>Entity</th><th>Records</th><th>Source</th></tr></thead>
+      <tbody id="records-body"></tbody>
+    </table>
+    <div class="empty" id="records-empty">Loading...</div>
+  </div>
+
+  <!-- Needs Review panel -->
+  <div class="panel" id="review">
+    <div class="search-bar">
+      <input type="text" id="review-q" placeholder="Filter by name..." />
+      <button onclick="loadReview()">Refresh</button>
+    </div>
+    <table class="table" id="review-table">
+      <thead><tr><th>Entity A</th><th>Entity B</th><th>Score</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody id="review-body"></tbody>
+    </table>
+    <div class="empty" id="review-empty">Loading...</div>
+  </div>
+
+  <!-- Links panel -->
+  <div class="panel" id="links">
+    <div class="search-bar">
+      <input type="text" id="links-q" placeholder="Search entity links..." />
+      <button onclick="searchLinks()">Search</button>
+    </div>
+    <table class="table" id="links-table">
+      <thead><tr><th>Entity A</th><th>Entity B</th><th>Score</th><th>Status</th><th>Linked At</th></tr></thead>
+      <tbody id="links-body"></tbody>
+    </table>
+    <div class="empty" id="links-empty">Loading...</div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const KEY = localStorage.getItem('vajra_api_key') || '';
+function headers() { return KEY ? {'X-API-Key': KEY} : {}; }
+
+// Tab switching
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById(t.dataset.panel).classList.add('active');
+    if (t.dataset.panel === 'review') loadReview();
+  });
+});
+
+// Records
+async function loadRecords(offset = 0) {
+  try {
+    const r = await fetch(`${API}/entities?limit=50&offset=${offset}`, {headers: headers()});
+    if (!r.ok) { document.getElementById('records-empty').textContent = 'Auth failed — set key.'; return; }
+    const d = await r.json();
+    document.getElementById('records-stats').innerHTML =
+      `<div class="stat-card"><div class="label">Total Entities</div><div class="value">${d.total_count}</div></div>` +
+      `<div class="stat-card"><div class="label">Showing</div><div class="value">${d.count}</div></div>`;
+    const tbody = document.getElementById('records-body');
+    tbody.innerHTML = d.entities.map(e =>
+      `<tr><td>${esc(e.entity_name)}</td><td>${e.record_count}</td><td>—</td></tr>`
+    ).join('');
+    document.getElementById('records-empty').style.display = d.entities.length ? 'none' : 'block';
+  } catch(e) { document.getElementById('records-empty').textContent = 'Error: ' + e.message; }
+}
+
+async function searchRecords() {
+  const q = document.getElementById('records-q').value.trim();
+  if (!q) { loadRecords(); return; }
+  try {
+    const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}`, {headers: headers()});
+    if (!r.ok) return;
+    const d = await r.json();
+    document.getElementById('records-stats').innerHTML =
+      `<div class="stat-card"><div class="label">Results for "${esc(q)}"</div><div class="value">${d.result_count}</div></div>`;
+    document.getElementById('records-body').innerHTML = d.results.map(e =>
+      `<tr><td>${esc(e.entity_name)}</td><td>${e.record_count}</td><td>search</td></tr>`
+    ).join('');
+  } catch(e) {}
+}
+
+// Review queue
+async function loadReview() {
+  try {
+    const r = await fetch(`${API}/entities?limit=200&offset=0`, {headers: headers()});
+    if (!r.ok) return;
+    const entities = (await r.json()).entities;
+    const tbody = document.getElementById('review-body');
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">Loading links...</td></tr>';
+    let rows = [];
+    for (const e of entities) {
+      try {
+        const lr = await fetch(`${API}/entities/${encodeURIComponent(e.entity_name)}/links`, {headers: headers()});
+        if (!lr.ok) continue;
+        const ld = await lr.json();
+        for (const l of ld.links) {
+          if (l.match_status === 'needs_review') {
+            rows.push(`<tr>
+              <td>${esc(l.entity_a)}</td><td>${esc(l.entity_b)}</td>
+              <td>${Number(l.match_score).toFixed(1)}</td>
+              <td><span class="badge review">needs review</span></td>
+              <td class="review-actions">
+                <button class="btn btn-confirm" onclick="reviewLink('${esc(l.entity_a)}','${esc(l.entity_b)}','confirm')">Confirm</button>
+                <button class="btn btn-reject" onclick="reviewLink('${esc(l.entity_a)}','${esc(l.entity_b)}','reject')">Reject</button>
+              </td>
+            </tr>`);
+          }
+        }
+      } catch(e) {}
+    }
+    tbody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="5" class="empty">Nothing to review</td></tr>';
+  } catch(e) {}
+}
+
+async function reviewLink(a, b, action) {
+  try {
+    const r = await fetch(`${API}/links/${encodeURIComponent(a)}/${encodeURIComponent(b)}/review?action=${action}`, {
+      method: 'POST', headers: headers()
+    });
+    const d = await r.json();
+    if (d.ok) { alert(d.message); loadReview(); } else { alert('Error: ' + (d.detail || d.message)); }
+  } catch(e) { alert('Request failed: ' + e.message); }
+}
+
+// Links search
+async function searchLinks() {
+  const q = document.getElementById('links-q').value.trim();
+  if (!q) return;
+  try {
+    const r = await fetch(`${API}/entities/${encodeURIComponent(q)}/links`, {headers: headers()});
+    if (!r.ok) { document.getElementById('links-empty').textContent = 'Not found'; return; }
+    const d = await r.json();
+    document.getElementById('links-body').innerHTML = d.links.map(l =>
+      `<tr><td>${esc(l.entity_a)}</td><td>${esc(l.entity_b)}</td>
+       <td>${Number(l.match_score).toFixed(1)}</td>
+       <td><span class="badge ${l.match_status === 'auto_confirmed' ? 'auto' : 'review'}">${l.match_status}</span></td>
+       <td>${l.linked_at || '—'}</td></tr>`
+    ).join('');
+    document.getElementById('links-empty').style.display = d.links.length ? 'none' : 'block';
+  } catch(e) { document.getElementById('links-empty').textContent = 'Error'; }
+}
+
+function esc(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// Boot: prompt for key then load
+if (!KEY) {
+  const k = prompt('Enter your VAJRA API key (X-API-Key header):');
+  if (k) { localStorage.setItem('vajra_api_key', k); location.reload(); }
+}
+loadRecords();
+</script>
+</body>
+</html>
